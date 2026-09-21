@@ -1,0 +1,2928 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Forge — build apps from a prompt</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=jetbrains-mono@400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff; --surface:#fafafa; --surface-2:#f4f5f7;
+  --ink:#0d0f12; --ink-2:#4b5159; --mut:#8b9199;
+  --line:#e8eaee; --line-2:#d9dce2;
+  --acc:#1156f0; --acc-soft:#eef3ff; --ok:#0f8a5f; --warn:#b4500a; --err:#c62b2b;
+  /* Blue carries every action; yellow never does. It only marks and highlights, so the
+     two never compete for the same job. */
+  --acc2:#f5c518; --acc2-deep:#c48f00; --acc2-soft:#fff8e1;
+  --r:14px; --r-sm:10px;
+  --shadow:0 1px 2px rgba(13,15,18,.04), 0 8px 28px -12px rgba(13,15,18,.12);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:Satoshi,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+}
+h1,h2,h3{margin:0;letter-spacing:-.025em;font-weight:700;line-height:1.15}
+h1{font-size:clamp(28px,5.2vw,40px)}
+h2{font-size:clamp(20px,3.4vw,25px)}
+h3{font-size:16px}
+p{margin:0}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+input,textarea,select{font:inherit;color:inherit}
+a{color:var(--acc);text-decoration:none}
+.hide{display:none !important}
+.mono{font-family:var(--mono);font-size:12.5px}
+
+/* shell */
+.top{
+  position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;
+  padding:12px 18px;background:rgba(255,255,255,.86);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.03em;font-size:16px}
+.brand svg{width:24px;height:24px;color:var(--ink)}
+.spacer{flex:1}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid var(--line-2);
+  border-radius:999px;font-size:12.5px;font-weight:500;color:var(--ink-2);white-space:nowrap;
+}
+.pill b{color:var(--ink);font-weight:700}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--mut);flex:none}
+.dot.live{background:var(--ok)}
+.pill.ghost{border-style:dashed}
+.icon-btn{padding:6px 10px;border:1px solid var(--line-2);border-radius:999px;font-size:12.5px;color:var(--ink-2)}
+.icon-btn:hover{border-color:var(--ink);color:var(--ink)}
+
+main{max-width:940px;margin:0 auto;padding:34px 18px 100px;min-width:0}
+body{overflow-x:hidden}
+.wide{max-width:1180px}
+
+/* buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:12px 18px;border-radius:var(--r-sm);background:var(--ink);color:#fff;
+  font-weight:500;transition:transform .12s ease,opacity .15s ease;
+}
+.btn:hover{opacity:.88}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.42;cursor:not-allowed}
+.btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line-2)}
+.btn.sec:hover{border-color:var(--ink);opacity:1}
+.btn.acc{background:var(--acc)}
+.btn.sm{padding:8px 13px;font-size:13.5px}
+.btn.block{width:100%}
+
+/* cards */
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:22px}
+.card.pad-lg{padding:28px}
+.muted{color:var(--mut)}
+.sub{color:var(--ink-2);font-size:14.5px}
+.lbl{font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--mut)}
+.field{width:100%;padding:12px 14px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:#fff;outline:none;transition:border-color .15s}
+.field:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.notice{padding:11px 14px;border-radius:var(--r-sm);font-size:13.5px;border:1px solid}
+.notice.err{background:#fef4f4;border-color:#f3d2d2;color:var(--err)}
+.notice.ok{background:#f1faf5;border-color:#cbe9da;color:var(--ok)}
+.notice.warn{background:#fff8ef;border-color:#f0e0c6;color:var(--warn)}
+
+/* gate */
+.gate{min-height:calc(100dvh - 54px);display:grid;place-items:center;padding:28px 18px 60px}
+.gate-inner{width:100%;max-width:470px;text-align:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--line-2);border-radius:999px;font-size:12px;color:var(--ink-2);margin-bottom:22px}
+.gate h1{margin-bottom:12px}
+.gate .sub{margin-bottom:26px}
+.gate-actions{display:grid;gap:10px}
+.divider{display:flex;align-items:center;gap:12px;color:var(--mut);font-size:12px;margin:6px 0}
+.divider:before,.divider:after{content:"";flex:1;height:1px;background:var(--line)}
+.codebox{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 6px;
+  padding:16px;border:1px dashed var(--line-2);border-radius:var(--r);background:var(--surface);
+}
+.codebox .k{font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:.06em}
+
+/* prompt composer */
+.composer{border:1px solid var(--line-2);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;background:#fff}
+.composer:focus-within{border-color:var(--acc)}
+.composer textarea{
+  width:100%;min-height:150px;padding:18px;border:0;outline:none;resize:vertical;
+  font-size:16px;line-height:1.6;background:transparent;
+}
+.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border-top:1px solid var(--line);background:var(--surface)}
+.tool{padding:7px 11px;border:1px solid var(--line-2);border-radius:999px;font-size:12.5px;color:var(--ink-2);background:#fff}
+.tool:hover{border-color:var(--ink);color:var(--ink)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.chip{padding:7px 12px;border:1px solid var(--line-2);border-radius:999px;font-size:13px;background:#fff;color:var(--ink-2)}
+.chip:hover{border-color:var(--ink);color:var(--ink)}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;margin-top:14px}
+.tpl{text-align:left;padding:14px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;transition:border-color .15s,transform .12s}
+.tpl:hover{border-color:var(--ink);transform:translateY(-1px)}
+.tpl b{display:block;font-size:14px;margin-bottom:3px}
+.tpl span{font-size:12.5px;color:var(--mut);line-height:1.45}
+.files{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.file{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line-2);border-radius:999px;font-size:12.5px;background:#fff}
+.file img{width:22px;height:22px;object-fit:cover;border-radius:5px}
+.file button{color:var(--mut);font-size:15px;line-height:1}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:34px 0 4px}
+
+/* questions */
+.q{border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:12px}
+.q .qt{font-weight:500;margin-bottom:12px}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{padding:9px 14px;border:1px solid var(--line-2);border-radius:999px;font-size:13.5px;background:#fff;color:var(--ink-2)}
+.opt:hover{border-color:var(--ink)}
+.opt.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.q .field{margin-top:10px}
+
+/* build */
+.build{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.panel{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#fff;display:flex;flex-direction:column}
+.panel-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:500}
+.code{
+  margin:0;padding:14px;height:56vh;min-height:320px;overflow:auto;background:#0d0f12;color:#dfe4ea;
+  font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+}
+.code .cursor{display:inline-block;width:7px;height:14px;background:#7aa2ff;vertical-align:-2px;animation:bl .9s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+iframe.prev{width:100%;height:56vh;min-height:320px;border:0;background:#fff}
+.log{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.think{margin-top:16px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.think-head{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--surface);font-size:13px;font-weight:500;cursor:pointer;width:100%;text-align:left}
+.think-head .chev{transition:transform .2s;color:var(--mut)}
+.think.open .think-head .chev{transform:rotate(90deg)}
+.think-body{display:none;border-top:1px solid var(--line)}
+.think.open .think-body{display:block}
+.think-body .stream{max-height:220px;overflow:auto;padding:14px;font-size:13px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap}
+.think-body .plan{padding:14px;border-top:1px solid var(--line);font-size:13.5px;line-height:1.65;white-space:pre-wrap;max-height:340px;overflow:auto}
+.think-body .plan b{font-weight:600;color:var(--ink)}
+.pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--acc);animation:pu 1.1s ease-in-out infinite}
+@keyframes pu{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.25)}}
+.pub-url{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--surface);font-family:var(--mono);font-size:12.5px;word-break:break-all}
+.step{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)}
+.step .s{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line-2);flex:none;display:grid;place-items:center;font-size:10px}
+.step.done .s{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.active .s{border-color:var(--acc);border-right-color:transparent;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bar{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:14px}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .4s ease}
+
+/* modal */
+.mask{position:fixed;inset:0;background:rgba(13,15,18,.42);display:grid;place-items:center;padding:18px;z-index:60}
+.modal{width:100%;max-width:520px;background:#fff;border-radius:var(--r);box-shadow:var(--shadow);max-height:88dvh;overflow:auto}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+.modal-body{padding:20px;display:grid;gap:14px}
+.modal.lg{max-width:900px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
+.scroll{overflow:auto;max-height:300px;border:1px solid var(--line);border-radius:var(--r-sm)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px}
+.stat b{display:block;font-size:21px;letter-spacing:-.02em}
+.stat span{font-size:12px;color:var(--mut)}
+.tabs{display:flex;gap:6px;padding:0 20px 14px}
+.tab{padding:7px 12px;border-radius:999px;font-size:13px;color:var(--ink-2);border:1px solid transparent}
+.tab.on{background:var(--surface-2);color:var(--ink)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);opacity:0;
+  background:var(--ink);color:#fff;padding:11px 16px;border-radius:999px;font-size:13.5px;z-index:90;
+  transition:.25s ease;pointer-events:none;max-width:90vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%)}
+
+@media(max-width:700px){
+  .top{gap:8px;padding:10px 12px}
+  .top .pill,.top .icon-btn{padding:5px 9px;font-size:12px}
+  #enginePill{display:none}
+  .brand{font-size:15px}
+  .tools{gap:6px}
+  .tool{padding:6px 10px;font-size:12px}
+}
+@media(max-width:820px){
+  .build{grid-template-columns:1fr}
+  .code,iframe.prev{height:42vh}
+  main{padding:24px 16px 90px}
+  .grid2{grid-template-columns:1fr}
+  th,td{padding:7px 8px}
+}
+
+  .ftabs{display:flex;gap:4px;overflow-x:auto;padding:8px 10px 0;background:#0b0e14;
+    border-bottom:1px solid #1c2230;scrollbar-width:thin}
+  .ftabs:empty{display:none}
+  .ftab{flex:none;font:500 12px/1 var(--mono);color:#7b8698;background:transparent;border:0;
+    border-radius:6px 6px 0 0;padding:8px 10px;cursor:pointer;white-space:nowrap;
+    transition:color .12s ease,background .12s ease}
+  .ftab:hover{color:#c8d2e0;background:#141926}
+  .ftab.on{color:#fff;background:#1b2330}
+  .ftab .wip{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--acc);
+    margin-left:6px;vertical-align:middle;animation:blink 1s steps(2,start) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .integ{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);
+    padding:14px 16px;margin-top:18px}
+  .integ-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:12px}
+  .integ-head b{font-size:13.5px}
+  .integ-head .muted{font-size:12.5px}
+  .integ-list{display:flex;flex-wrap:wrap;gap:8px}
+  .ichip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;
+    border:1px solid var(--line-2);background:#fff;font-size:12.5px;cursor:pointer;
+    transition:border-color .12s ease,box-shadow .12s ease}
+  .ichip:hover{border-color:var(--ink-3);box-shadow:var(--shadow-sm)}
+  .ichip i{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+  .ichip.dev i{background:#d9a13b}
+  .ichip .tag{font-size:11px;color:var(--mut);text-transform:lowercase}
+  .keyrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .keyrow .mono{font-size:12px}
+  .steps-list{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.7;color:var(--ink-2)}
+  .prevnote{font-size:12px;color:var(--muted);padding:8px 12px;border-top:1px solid var(--line);
+    background:#fafbfc}
+
+/* ---- model picker ---- */
+.mpick{display:flex;flex-direction:column;gap:8px;margin:22px 0 4px}
+.mpick .mlab{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.mrow{display:flex;gap:8px;flex-wrap:wrap}
+.mopt{display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;
+  padding:11px 13px;border:1px solid var(--ln);border-radius:12px;background:#fff;
+  cursor:pointer;transition:border-color .15s,background .15s;min-width:172px}
+.mopt:hover{border-color:#c9cdd6}
+.mopt.on{border-color:var(--acc);background:#f4f7ff}
+.mopt b{font-size:14px;font-weight:600}
+.mopt .mc{font-size:12px;color:var(--acc);font-weight:600}
+.mopt .mb{font-size:11.5px;color:var(--mut);line-height:1.35}
+/* ---- billing meter ---- */
+.meter{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;
+  color:var(--mut);margin:4px 0 14px}
+.meter b{color:var(--ink);font-weight:600}
+.spark{display:inline-block;color:var(--acc);font-weight:600;font-size:12px;
+  animation:flyup .9s ease-out forwards}
+@keyframes flyup{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-10px)}}
+/* ---- exhausted ---- */
+.dry{border:1px solid #f0d48a;background:#fffaf0;border-radius:16px;padding:20px;margin:14px 0}
+.dry h3{font-size:17px;margin:0 0 6px}
+.dry p{font-size:13.5px;color:var(--mut);margin:0 0 14px;line-height:1.55}
+.dry .fl{font-family:var(--mono);font-size:12px;color:var(--mut);margin:0 0 14px;
+  display:flex;flex-wrap:wrap;gap:6px}
+.dry .fl span{background:#fff;border:1px solid var(--ln);border-radius:6px;padding:2px 7px}
+.dryrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* ---- issues popup ---- */
+.pop{position:fixed;right:20px;bottom:20px;width:344px;max-width:calc(100vw - 32px);
+  background:#fff;border:1px solid var(--ln);border-radius:16px;
+  box-shadow:0 18px 44px rgba(16,20,30,.16);z-index:60;overflow:hidden;
+  animation:popin .28s cubic-bezier(.22,1,.36,1)}
+@keyframes popin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.pop header{display:flex;align-items:center;gap:8px;padding:14px 16px 10px}
+.pop header b{font-size:14px;flex:1}
+.pop .x{background:none;border:0;color:var(--mut);cursor:pointer;font-size:17px;line-height:1;padding:2px 4px}
+.pop .body{padding:0 16px 14px}
+.pop ul{list-style:none;margin:0 0 12px;padding:0;max-height:168px;overflow:auto}
+.pop li{font-size:12.5px;color:var(--mut);padding:7px 0;border-top:1px solid var(--ln);line-height:1.45}
+.pop li:first-child{border-top:0}
+.pop li code{font-family:var(--mono);font-size:11.5px;color:var(--ink);background:#f4f5f7;
+  padding:1px 5px;border-radius:5px}
+.pop .acts{display:flex;gap:8px}
+.pop .acts .btn{flex:1;justify-content:center;font-size:13px;padding:9px 12px}
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.dot.bad{background:#dd6b20}
+.dot.ok{background:var(--ok)}
+
+/* ---- explore gallery ---- */
+.exhead{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.exhead h1{margin:0}
+.extabs{display:flex;gap:4px;background:#f4f5f7;padding:4px;border-radius:11px}
+.extab{border:0;background:none;padding:7px 13px;border-radius:8px;font:inherit;font-size:13px;
+  color:var(--mut);cursor:pointer;transition:background .15s,color .15s}
+.extab.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(16,20,30,.06)}
+.exsearch{margin-left:auto;min-width:200px;max-width:260px}
+.grid-apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px}
+.acard{border:1px solid var(--ln);border-radius:16px;overflow:hidden;background:#fff;
+  display:flex;flex-direction:column;transition:border-color .16s,transform .16s;cursor:pointer}
+.acard:hover{border-color:#c7cbd4;transform:translateY(-2px)}
+.acard .shot{height:154px;border-bottom:1px solid var(--ln);background:#fafbfc;
+  position:relative;overflow:hidden}
+/* A light-themed app blends into the card, so lay a hairline and a soft fade over the
+   bottom of every thumbnail to keep the tile boundary readable. */
+.acard .shot::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+  box-shadow:inset 0 -1px 0 rgba(16,20,30,.07);
+  background:linear-gradient(to bottom,transparent 72%,rgba(255,255,255,.55))}
+.acard .shot::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,
+  #fafbfc 30%,#f1f2f5 50%,#fafbfc 70%);background-size:220% 100%;
+  animation:shimmer 1.3s linear infinite;transition:opacity .25s}
+.acard .shot.ready::after{opacity:0;animation:none}
+@keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){.acard .shot::after{animation:none}}
+.acard .shot iframe{position:absolute;inset:0;width:200%;height:200%;border:0;
+  transform:scale(.5);transform-origin:top left;pointer-events:none}
+.acard .meat{padding:13px 14px 12px;display:flex;flex-direction:column;gap:6px;flex:1}
+.acard h3{margin:0;font-size:15px;letter-spacing:-.01em;line-height:1.3}
+.acard .sm{font-size:12.5px;color:var(--mut);line-height:1.45;margin:0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.acard .by{font-size:11.5px;color:var(--mut);letter-spacing:.02em}
+.acard .foot{display:flex;align-items:center;gap:12px;padding:9px 14px;
+  border-top:1px solid var(--ln);font-size:12px;color:var(--mut)}
+.acard .foot b{color:var(--ink);font-weight:600}
+.mini{display:inline-flex;align-items:center;gap:4px}
+.mini svg{width:14px;height:14px;flex:0 0 auto}
+.rmx{font-size:11px;color:var(--mut);border:1px solid var(--ln);border-radius:999px;
+  padding:1px 7px}
+.exempty{border:1px dashed var(--ln);border-radius:16px;padding:52px 24px;text-align:center}
+.exempty h3{margin:0 0 6px;font-size:17px}
+.exempty p{margin:0 auto;max-width:380px;color:var(--mut);font-size:13.5px;line-height:1.55}
+/* ---- detail ---- */
+.dt{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+@media (max-width:900px){.dt{grid-template-columns:1fr}}
+.dtprev{border:1px solid var(--ln);border-radius:16px;overflow:hidden;background:#fff}
+.dtprev .hd{display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-bottom:1px solid var(--ln);font-size:12.5px;color:var(--mut)}
+.dtprev iframe{width:100%;height:560px;border:0;display:block;background:#fff}
+.dtside{display:flex;flex-direction:column;gap:14px}
+.dtbox{border:1px solid var(--ln);border-radius:16px;padding:16px}
+.dtbox h2{margin:0 0 4px;font-size:19px;letter-spacing:-.015em;line-height:1.25}
+.dtbox .by{font-size:12.5px;color:var(--mut);margin:0 0 10px}
+.dtbox p.sum{font-size:13.5px;color:var(--mut);line-height:1.55;margin:0 0 14px}
+.votes{display:flex;gap:8px;margin-bottom:10px}
+.vbtn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  border:1px solid var(--ln);background:#fff;border-radius:11px;padding:9px;font:inherit;
+  font-size:13px;cursor:pointer;color:var(--ink);transition:border-color .15s,background .15s}
+.vbtn:hover{border-color:#c7cbd4}
+.vbtn.on{border-color:var(--acc);background:#f4f7ff;color:var(--acc);font-weight:600}
+.vbtn.on.down{border-color:#dd6b20;background:#fff8f2;color:#c05621}
+.vbtn svg{width:15px;height:15px}
+.cmt{display:flex;flex-direction:column;gap:10px;max-height:320px;overflow:auto;margin-top:12px}
+.cmt .c{border-top:1px solid var(--ln);padding-top:10px}
+.cmt .c:first-child{border-top:0;padding-top:0}
+.cmt .c .who{font-size:11.5px;color:var(--mut);margin-bottom:3px;display:flex;gap:6px;align-items:center}
+.cmt .c .bd{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.cmt .c .del{margin-left:auto;background:none;border:0;color:var(--mut);cursor:pointer;font-size:11px}
+.filelist{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.filelist span{font-family:var(--mono);font-size:11px;color:var(--mut);
+  border:1px solid var(--ln);border-radius:6px;padding:2px 6px}
+
+/* ---- blue acts, yellow marks ---- */
+/* The active file tab gets a yellow cap so the eye finds it instantly against the dark
+   strip, without turning it into something that looks clickable-primary. */
+.ftab.on{box-shadow:inset 0 2px 0 var(--acc2)}
+/* Running low is a state, not an action, so it is yellow. */
+#creditPill.low{border-color:var(--acc2);background:var(--acc2-soft)}
+#creditPill.low b{color:var(--acc2-deep)}
+/* Sort tabs in the gallery: the chosen one is underlined in yellow. */
+.extab.on{box-shadow:inset 0 -2px 0 var(--acc2)}
+/* A remixed app is marked, not highlighted. */
+.rmx{border-color:var(--acc2);color:var(--acc2-deep);background:var(--acc2-soft)}
+/* Focus stays blue everywhere — it signals where an action will land. */
+
+/* ---- duotone headline treatment ---- */
+/* A yellow sweep painted behind chosen words. It sits in the background layer, so the text
+   itself stays solid ink and stays readable — unlike gradient-filled type. */
+.hi{position:relative;display:inline-block;white-space:nowrap}
+/* Sits low, roughly a marker's width, so it reads as a sweep under the word rather than a
+   band struck through the middle of it. */
+.hi::before{content:'';position:absolute;left:-.05em;right:-.05em;bottom:0;height:.24em;
+  z-index:-1;border-radius:2px;background:var(--acc2);
+  transform:scaleX(0);transform-origin:left center}
+.hi.lit::before{transform:scaleX(1);transition:transform .5s cubic-bezier(.22,.8,.3,1)}
+.hi.blue::before{background:var(--acc);opacity:.16}
+h1 .hi, h2 .hi{isolation:isolate}
+/* the accent word itself, for places a sweep would be too loud */
+.ink-acc{color:var(--acc)}
+.ink-acc2{color:var(--acc2-deep)}
+/* a two-tone rule used under section headings */
+.rule{height:3px;width:52px;border-radius:2px;margin:14px auto 0;
+  background:linear-gradient(90deg,var(--acc) 0 58%,var(--acc2) 58% 100%)}
+.rule.left{margin-left:0}
+
+/* ---- opening animation ---- */
+#intro{position:fixed;inset:0;z-index:200;background:var(--bg);display:grid;
+  place-items:center;gap:0}
+#intro.gone{opacity:0;transform:scale(1.04);pointer-events:none;
+  transition:opacity .5s ease,transform .7s cubic-bezier(.22,.8,.3,1)}
+.introBox{display:flex;flex-direction:column;align-items:center;gap:18px}
+.introMark{width:76px;height:76px;overflow:visible}
+.introMark path{stroke-linecap:square;fill:none}
+.introMark .p1,.introMark .p2{stroke:var(--ink);stroke-width:2.2}
+.introMark .p3{stroke:var(--acc);stroke-width:2.2}
+.introMark .spark{stroke:var(--acc2);stroke-width:1.7;opacity:0}
+.draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);
+  animation:draw .62s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes sparkIn{0%{opacity:0;transform:scale(.4)}60%{opacity:1}100%{opacity:1;transform:scale(1)}}
+.introWord{display:flex;gap:1px;font-size:29px;font-weight:700;letter-spacing:-.03em;
+  line-height:1}
+.introWord span{opacity:0;transform:translateY(14px);
+  animation:wordUp .5s cubic-bezier(.22,.8,.3,1) forwards}
+@keyframes wordUp{to{opacity:1;transform:none}}
+.introBar{width:104px;height:3px;border-radius:2px;background:var(--surface-2);
+  overflow:hidden;position:relative}
+.introBar i{position:absolute;inset:0;border-radius:2px;transform-origin:left center;
+  transform:scaleX(0);background:linear-gradient(90deg,var(--acc),var(--acc2));
+  animation:fill 1s cubic-bezier(.4,0,.2,1) .35s forwards}
+@keyframes fill{to{transform:scaleX(1)}}
+
+/* ---- staggered entrance for the landing content ---- */
+.rise{opacity:0;transform:translateY(16px)}
+.rise.in{opacity:1;transform:none;
+  transition:opacity .55s ease,transform .55s cubic-bezier(.22,.8,.3,1)}
+
+@media (prefers-reduced-motion:reduce){
+  #intro{display:none}
+  .draw,.introWord span,.introBar i{animation:none}
+  .rise{opacity:1;transform:none}
+  .hi::before{transform:scaleX(1);transition:none}
+  .hi.lit::before{transition:none}
+}
+/* ============ THINKING ============ */
+/* The plan takes 30-90 seconds. Rather than a spinner, the reasoning is shown arriving, so
+   the wait reads as work being done. */
+#thinkView .tk-wrap{max-width:720px;margin:0 auto}
+.tk-orb{position:relative;width:104px;height:104px;margin:8px auto 30px}
+.tk-orb i{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--acc);
+  opacity:.5;animation:pulseOut 2.6s cubic-bezier(.3,0,.5,1) infinite}
+.tk-orb i:nth-child(2){animation-delay:.65s;border-color:var(--acc2)}
+.tk-orb i:nth-child(3){animation-delay:1.3s}
+.tk-orb i:nth-child(4){animation-delay:1.95s;border-color:var(--acc2)}
+@keyframes pulseOut{0%{transform:scale(.34);opacity:0}
+  22%{opacity:.62}100%{transform:scale(1);opacity:0}}
+.tk-core{position:absolute;inset:36px;border-radius:50%;
+  background:conic-gradient(from 0deg,var(--acc),var(--acc2),var(--acc));
+  animation:spin 3.4s linear infinite}
+.tk-core::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--bg)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tk-head{text-align:center;margin-bottom:6px}
+.tk-head h1{font-size:clamp(24px,4vw,33px);margin:0 0 8px}
+.tk-stage{text-align:center;font:500 13px/1.5 var(--mono);color:var(--acc);
+  letter-spacing:.02em;min-height:20px;margin-bottom:28px}
+.tk-stage b{color:var(--acc2-deep);font-weight:500}
+/* the live stream of the model's own words, clipped to the last few lines */
+.tk-stream{border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  padding:14px 16px;font:400 12.5px/1.75 var(--mono);color:var(--ink-2);
+  max-height:150px;overflow:hidden;position:relative;
+  mask-image:linear-gradient(transparent,#000 34%);-webkit-mask-image:linear-gradient(transparent,#000 34%)}
+.tk-stream:empty{display:none}
+.tk-cur{display:inline-block;width:6px;height:13px;background:var(--acc);
+  vertical-align:-2px;animation:blink 1s steps(2,start) infinite}
+/* plan lines land one at a time as they are parsed */
+.pl{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);
+  opacity:0;transform:translateY(8px);animation:plIn .42s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes plIn{to{opacity:1;transform:none}}
+.pl:last-child{border-bottom:0}
+.pl k{flex:none;width:74px;font:600 10.5px/1.7 var(--mono);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--mut);padding-top:2px}
+.pl v{font-size:14.5px;line-height:1.6;color:var(--ink);text-wrap:pretty}
+.pl.k-risk v{color:var(--ink-2)}
+.pl.k-risk k{color:var(--acc2-deep)}
+
+/* ============ CHAT-STYLE Q&A ============ */
+/* The header is sticky and 58px tall, so anything scrolled into view needs to clear it or the
+   question lands underneath and reads as missing. */
+.bub,.opts{scroll-margin-top:76px;scroll-margin-bottom:24px}
+.chat{display:flex;flex-direction:column;gap:2px}
+.bub{max-width:86%;padding:12px 15px;border-radius:15px;font-size:14.5px;line-height:1.6;
+  margin-bottom:12px;opacity:0;transform:translateY(9px);
+  animation:bubIn .38s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes bubIn{to{opacity:1;transform:none}}
+.bub.ai{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:5px;
+  align-self:flex-start}
+.bub.me{background:var(--acc);color:#fff;border-bottom-right-radius:5px;align-self:flex-end;
+  font-weight:500}
+.bub .wy{display:block;margin-top:5px;font-size:12.5px;color:var(--mut)}
+.bub.ai .qn{display:block;font:600 10.5px/1.6 var(--mono);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--acc);margin-bottom:4px}
+.opts{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;align-self:flex-start;max-width:100%}
+.opts.done{display:none}
+/* Real answers from the planner run long ("OAuth via backend redirect flow, server.py handles
+   the callback"), so options have to wrap. A pill radius looks wrong on three lines, hence the
+   softer corner and a width cap that keeps them scannable. */
+.opt2{font-size:13.5px;padding:9px 15px;border:1px solid var(--line-2);border-radius:16px;
+  background:var(--bg);cursor:pointer;transition:border-color .14s ease,background .14s ease;
+  white-space:normal;text-align:left;line-height:1.45;max-width:min(100%,430px);flex:0 1 auto}
+.opt2.own{border-radius:999px;white-space:nowrap}
+.opt2:hover{border-color:var(--acc);background:var(--acc-soft)}
+.opt2.own{color:var(--mut)}
+.typing{display:inline-flex;gap:4px;align-items:center;height:14px}
+.typing s{width:5px;height:5px;border-radius:50%;background:var(--mut);
+  animation:tdot 1.1s ease-in-out infinite}
+.typing s:nth-child(2){animation-delay:.16s}
+.typing s:nth-child(3){animation-delay:.32s}
+@keyframes tdot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+
+/* ============ INTEGRATIONS ============ */
+.ig-cat{font:600 10.5px/1.7 var(--mono);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mut);margin:22px 0 8px}
+.ig-cat:first-child{margin-top:4px}
+.ig{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.ig:last-child{border-bottom:0}
+.ig-t{flex:1;min-width:0}
+.ig-t b{display:block;font-size:14.5px;font-weight:600}
+.ig-t span{display:block;font-size:13px;color:var(--ink-2);margin-top:1px}
+/* the tick. Yellow marks state, so a connected integration is yellow-ringed, not blue. */
+.tick{flex:none;width:22px;height:22px;border-radius:50%;background:var(--acc2-soft);
+  border:1px solid var(--acc2);display:grid;place-items:center}
+.tick svg{width:12px;height:12px;stroke:var(--acc2-deep);stroke-width:2.6;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:18;stroke-dashoffset:18;
+  animation:tickIn .34s .04s cubic-bezier(.3,.8,.3,1) forwards}
+@keyframes tickIn{to{stroke-dashoffset:0}}
+.ig-form{border:1px solid var(--acc);border-radius:12px;background:var(--acc-soft);
+  padding:14px;margin:2px 0 14px}
+.ig-form label{display:block;font:600 10.5px/1.9 var(--mono);letter-spacing:.07em;
+  color:var(--ink-2);margin-top:8px}
+.ig-form label:first-of-type{margin-top:0}
+.ig-form input{width:100%;font:400 13px/1 var(--mono);padding:10px 11px;border-radius:8px;
+  border:1px solid var(--line-2);background:var(--bg);color:var(--ink)}
+.ig-form input:focus{outline:2px solid var(--acc);outline-offset:-1px;border-color:var(--acc)}
+.ig-steps{margin:10px 0 0;padding-left:18px;font-size:12.5px;line-height:1.75;color:var(--ink-2)}
+.ig-steps li::marker{color:var(--acc2-deep)}
+.ig-note{font-size:12px;color:var(--mut);margin:10px 0 0}
+/* the "connect these first?" prompt inside the chat */
+.ig-ask{border:1px solid var(--acc2);background:var(--acc2-soft);border-radius:13px;
+  padding:14px 16px;margin:0 0 18px}
+.ig-ask h4{margin:0 0 4px;font-size:14.5px}
+.ig-ask p{margin:0 0 10px;font-size:13px;color:var(--ink-2)}
+.ig-ask ul{margin:0 0 12px;padding-left:18px;font-size:13.5px;line-height:1.8}
+@media (prefers-reduced-motion:reduce){
+  .tk-orb i,.tk-core,.typing s{animation:none}
+  .pl,.bub{animation:none;opacity:1;transform:none}
+  .tick svg{animation:none;stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+
+<div id="intro" aria-hidden="true">
+  <div class="introBox">
+    <svg class="introMark" viewBox="0 0 24 24" aria-hidden="true">
+      <path class="p1" d="M4 20V4h13"/>
+      <path class="p2" d="M4 12h9"/>
+      <path class="p3" d="M17 8.5l3.5 3.5L17 15.5"/>
+      <path class="spark" d="M20.6 3.4v3.4M18.9 5.1h3.4"/>
+    </svg>
+    <div class="introWord" id="introWord"></div>
+    <div class="introBar"><i></i></div>
+  </div>
+</div>
+
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" aria-label="Forge logo">
+      <path d="M4 20V4h13" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
+      <path d="M4 12h9" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
+      <path d="M17 8.5l3.5 3.5L17 15.5" stroke="var(--acc)" stroke-width="2" stroke-linecap="square"/>
+    </svg>
+    Forge
+  </div>
+  <div class="spacer"></div>
+  <span class="pill ghost" id="enginePill" title="Generation engine"><i class="dot" id="engineDot"></i><span id="engineTxt">checking…</span></span>
+  <span class="pill hide" id="creditPill"><b id="creditVal">0</b> credits</span>
+  <button class="icon-btn hide" id="newBtn">New app</button>
+      <button class="icon-btn hide" id="integBtn">Integrations</button>
+  <button class="icon-btn" id="exploreBtn">Explore</button>
+  <button class="icon-btn hide" id="giftBtn">Gift code</button>
+  <button class="icon-btn hide" id="acctBtn">Account</button>
+  <button class="icon-btn" id="adminBtn">Admin</button>
+</header>
+
+<!-- ============ GATE ============ -->
+<section id="gate" class="gate">
+  <div class="gate-inner">
+    <span class="eyebrow rise" id="gateBadge"><i class="dot live"></i> Full-stack projects, written by a reasoning model</span>
+    <h1 class="rise">Describe an app.<br>Get <span class="hi">working code</span>.</h1>
+    <p class="sub rise">Write a prompt, answer a few questions, and Forge writes the backend, HTML, CSS and JS live in front of you. Preview it, download it, ship it.</p>
+
+    <div id="gateChoice" class="gate-actions rise">
+      <button class="btn block acc" id="doSignup">Create account — 10 free credits</button>
+      <div class="divider">already have a code</div>
+      <input class="field" id="loginCode" placeholder="FRG-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" style="text-align:center;font-family:var(--mono);letter-spacing:.08em">
+      <button class="btn sec block" id="doLogin">Sign in with code</button>
+      <p class="muted" style="font-size:12.5px;margin-top:6px">No email, no password. Your code is your account — save it.</p>
+    </div>
+
+    <div id="gateNew" class="hide">
+      <div class="notice ok" style="text-align:left">Account created. This code is the only way back in from another device — save it now.</div>
+      <div class="codebox">
+        <span class="k" id="newCode">—</span>
+        <button class="btn sm sec" id="copyCode">Copy</button>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin-bottom:18px">This browser will remember you automatically.</p>
+      <button class="btn block acc" id="gotoPrompt">I saved it — start building</button>
+    </div>
+
+    <div id="gateErr" class="notice err hide" style="margin-top:14px;text-align:left"></div>
+  </div>
+</section>
+
+<!-- ============ PROMPT ============ -->
+<main id="promptView" class="hide">
+  <h1 style="margin-bottom:10px">What should we <span class="hi">build</span>?</h1>
+  <p class="sub" style="margin-bottom:22px">Be specific about the screens and what a user does. Attach a screenshot or a data file to guide the design.</p>
+
+  <div class="composer">
+    <textarea id="prompt" placeholder="A habit tracker where I tick off daily habits, see a streak counter, and get a weekly grid view…"></textarea>
+    <div class="tools">
+      <button class="tool" id="attachBtn">Attach file or image</button>
+      <button class="tool" data-tool="polish">Improve my prompt</button>
+      <button class="tool" data-tool="detail">Add detail</button>
+      <button class="tool" data-tool="mobile">Mobile-first</button>
+      <button class="tool" data-tool="dark">Dark theme</button>
+      <button class="tool" data-tool="clear">Clear</button>
+      <div class="spacer"></div>
+      <span class="muted mono" id="charCount">0</span>
+    </div>
+  </div>
+  <input type="file" id="fileInput" class="hide" multiple accept="image/*,.txt,.csv,.json,.md,.js,.py,.html,.css">
+  <div class="files" id="fileList"></div>
+
+  <div class="chips">
+    <button class="chip" data-add="Use a clean minimal white UI with lots of whitespace.">+ minimal white UI</button>
+    <button class="chip" data-add="Save all data in localStorage so it persists between visits.">+ save data locally</button>
+    <button class="chip" data-add="Include search and filtering.">+ search &amp; filters</button>
+    <button class="chip" data-add="Include charts and simple statistics.">+ charts</button>
+    <button class="chip" data-add="Make it fully responsive for phone and desktop.">+ responsive</button>
+    <button class="chip" data-add="Add keyboard shortcuts for power users.">+ shortcuts</button>
+  </div>
+
+  <div class="section-head"><h2>Templates</h2><span class="muted" style="font-size:13px">tap to load</span></div>
+  <div class="tpl-grid" id="tplGrid"></div>
+
+  <div style="display:flex;gap:10px;align-items:center;margin-top:28px;flex-wrap:wrap">
+    <button class="btn acc" id="toClarify">Continue — 1 credit</button>
+    <button class="btn sec" id="myWork">My projects</button>
+    <span class="muted" style="font-size:13px">Planning costs 1 credit. The build is billed per file at your model's rate. Publishing costs 50. You get 30 free credits every month.</span>
+  </div>
+  <div id="promptErr" class="notice err hide" style="margin-top:14px"></div>
+</main>
+
+<!-- ============ THINKING ============ -->
+<main id="thinkView" class="hide">
+  <div class="tk-wrap">
+    <div class="tk-orb" aria-hidden="true">
+      <i></i><i></i><i></i><i></i>
+      <div class="tk-core"></div>
+    </div>
+    <div class="tk-head">
+      <h1 id="tkTitle">Working out how to build this</h1>
+      <p class="sub" id="tkSub" style="margin:0 auto 20px;max-width:46ch">Reading your idea, choosing the screens and the data, and deciding what to ask you.</p>
+    </div>
+    <p class="tk-stage" id="tkStage"></p>
+    <div class="tk-stream" id="tkStream"></div>
+    <div id="tkPlan" style="margin-top:20px"></div>
+    <div id="thinkErr" class="notice err hide" style="margin-top:16px"></div>
+    <div style="margin-top:20px"><button class="btn sec hide" id="tkBack">← Edit prompt</button></div>
+  </div>
+</main>
+
+<!-- ============ CLARIFY ============ -->
+<main id="clarifyView" class="hide">
+  <button class="icon-btn" id="backToPrompt" style="margin-bottom:18px">&larr; Edit prompt</button>
+  <div id="planRecap" style="margin-bottom:22px"></div>
+  <div id="integAsk"></div>
+  <div class="chat" id="qChat"></div>
+  <div class="mpick">
+    <span class="mlab">Model</span>
+    <div class="mrow" id="mRow"></div>
+    <p class="sub" id="mNote" style="margin:2px 0 0;font-size:12.5px"></p>
+  </div>
+  <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+    <button class="btn acc" id="doGenerate">Generate app</button>
+    <button class="btn sec" id="skipAll">Skip the rest &amp; generate</button>
+  </div>
+  <div id="clarifyErr" class="notice err hide" style="margin-top:14px"></div>
+</main>
+
+<!-- ============ EXPLORE ============ -->
+<main id="exploreView" class="wide hide">
+  <div class="exhead">
+    <div>
+      <h1 style="margin-bottom:6px">Built with <span class="hi">Forge</span></h1>
+      <div class="rule left" style="margin:0 0 12px"></div>
+      <p class="sub" style="margin:0">Every app here was published by someone using this tool.
+        Open one, run it, remix it into your own account and change whatever you like.</p>
+    </div>
+  </div>
+  <div class="exhead" style="margin-bottom:18px">
+    <div class="extabs" id="exTabs">
+      <button class="extab on" data-sort="new">Newest</button>
+      <button class="extab" data-sort="top">Most liked</button>
+      <button class="extab" data-sort="remixed">Most remixed</button>
+      <button class="extab" data-sort="discussed">Most discussed</button>
+    </div>
+    <input class="field exsearch" id="exQ" placeholder="Search published apps…">
+  </div>
+  <div class="grid-apps" id="exGrid"></div>
+  <div class="exempty hide" id="exEmpty">
+    <h3>Nothing published yet</h3>
+    <p>Build an app and hit Publish live — it shows up here for everyone, and other people
+      can like it, comment on it and remix it.</p>
+  </div>
+</main>
+
+<!-- ============ PUBLISHED APP DETAIL ============ -->
+<main id="detailView" class="wide hide">
+  <button class="icon-btn" id="backToExplore" style="margin-bottom:18px">&larr; All apps</button>
+  <div class="dt">
+    <div class="dtprev">
+      <div class="hd"><i class="dot live"></i><span id="dtRunning">running live</span>
+        <div class="spacer"></div><span id="dtViews"></span></div>
+      <iframe id="dtFrame" sandbox="allow-scripts allow-forms allow-modals" title="Published app"></iframe>
+    </div>
+    <div class="dtside">
+      <div class="dtbox">
+        <h2 id="dtTitle">&nbsp;</h2>
+        <p class="by" id="dtBy"></p>
+        <p class="sum" id="dtSum"></p>
+        <div class="votes">
+          <button class="vbtn" id="dtUp">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0l4.5-8a2 2 0 0 1 3.6 1.5L14 9h4.6a2 2 0 0 1 2 2.5l-1.8 7A2 2 0 0 1 16.8 20H7"/></svg>
+            <span id="dtUpN">0</span></button>
+          <button class="vbtn down" id="dtDown">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-3zm0 0l-4.5 8a2 2 0 0 1-3.6-1.5L10 15H5.4a2 2 0 0 1-2-2.5l1.8-7A2 2 0 0 1 7.2 4H17"/></svg>
+            <span id="dtDownN">0</span></button>
+        </div>
+        <button class="btn acc block" id="dtRemix">Remix this app</button>
+        <p class="sub" id="dtRemixNote" style="margin:8px 0 0;font-size:12px">Copying is free. You only spend credits if you ask the model to change it.</p>
+        <div class="eyebrow" style="margin:14px 0 0">Files in this project</div>
+        <div class="filelist" id="dtFiles"></div>
+        <a class="btn sec block" id="dtOpen" target="_blank" rel="noopener" style="margin-top:12px;text-align:center">Open published page</a>
+      </div>
+      <div class="dtbox">
+        <div style="display:flex;align-items:center;gap:8px">
+          <b style="font-size:14px">Comments</b>
+          <span class="muted" style="font-size:12px" id="dtCN"></span>
+        </div>
+        <div style="margin-top:12px">
+          <textarea class="field" id="dtCBody" rows="3" placeholder="What do you think of it?" style="resize:vertical"></textarea>
+          <button class="btn sm acc" id="dtCSend" style="margin-top:8px">Post comment</button>
+        </div>
+        <div class="cmt" id="dtCList"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ BUILD ============ -->
+<main id="buildView" class="wide hide">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px">
+    <h1 id="buildTitle" style="font-size:26px">Building…</h1>
+    <div class="spacer"></div>
+    <button class="btn sm acc hide" id="pubBtn">Publish — 50 credits</button>
+    <button class="btn sm sec hide" id="dlBtn">Download .zip</button>
+    <button class="btn sm sec hide" id="openBtn">Open preview</button>
+    <button class="btn sm acc" id="againBtn">New app</button>
+  </div>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="log" id="log"></div>
+
+  <div class="meter hide" id="meter">
+    <span id="meterText"></span>
+    <span id="meterSpark"></span>
+  </div>
+
+  <div class="dry hide" id="dry">
+    <h3 id="dryTitle">Credits exhausted</h3>
+    <p id="dryMsg"></p>
+    <div class="fl" id="dryFiles"></div>
+    <div class="dryrow">
+      <input class="field" id="dryCode" placeholder="GIFT-XXXX-XXXX" style="max-width:210px">
+      <button class="btn acc" id="dryRedeem">Redeem</button>
+      <button class="btn sec hide" id="dryResume">Finish the build</button>
+    </div>
+  </div>
+
+  <div class="integ hide" id="integ">
+    <div class="integ-head">
+      <b>Integrations wired in</b>
+      <span class="muted">detected from your idea — each one is generated as its own module</span>
+    </div>
+    <div class="integ-list" id="integList"></div>
+  </div>
+
+  <div class="think hide" id="think">
+    <button class="think-head" id="thinkToggle">
+      <span class="chev">▸</span>
+      <span id="thinkLabel">Reasoning and build plan</span>
+      <span class="spacer"></span>
+      <span class="muted mono" id="thinkMeta"></span>
+    </button>
+    <div class="think-body">
+      <div class="stream" id="thinkStream"></div>
+      <div class="plan hide" id="thinkPlan"></div>
+    </div>
+  </div>
+
+  <div class="build" style="margin-top:20px">
+    <div class="panel">
+      <div class="panel-head"><i class="dot live"></i> <span id="fileLabel">project files</span> <span class="spacer"></span><span class="muted mono" id="byteCount">0 B</span></div>
+      <div class="ftabs" id="fileTabs"></div>
+      <pre class="code" id="codeOut"><span class="cursor"></span></pre>
+    </div>
+    <div class="panel">
+      <div class="panel-head">Live preview <span class="spacer"></span><span class="muted" style="font-size:12px">sandboxed</span></div>
+      <iframe class="prev" id="prevFrame" sandbox="allow-scripts allow-modals allow-same-origin allow-forms allow-popups" title="App preview"></iframe>
+      <div class="prevnote hide" id="prevNote">Frontend preview — API calls are answered by a stand-in. Download the project and run the backend for the real thing.</div>
+    </div>
+  </div>
+  <div id="buildErr" class="notice err hide" style="margin-top:14px"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+<div id="modals"></div>
+
+<script>
+const API = 'port/8000'.startsWith('__') ? 'http://localhost:8000' : 'port/8000';
+const $ = s => document.querySelector(s);
+const el = (t,c,x) => { const n=document.createElement(t); if(c)n.className=c; if(x!=null)n.textContent=x; return n; };
+let store = {};
+try { store = localStorage; } catch(e) { store = { getItem:k=>store['_'+k]||null, setItem:(k,v)=>store['_'+k]=v, removeItem:k=>delete store['_'+k] }; }
+
+const state = { user:null, prompt:'', title:'', attachments:[], questions:[], answers:[], projectId:null, code:'' };
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),2600); }
+const VIEWS = ['gate','promptView','thinkView','clarifyView','buildView','exploreView','detailView'];
+function show(id){
+  VIEWS.forEach(v=>$('#'+v).classList.toggle('hide', v!==id));
+  window.scrollTo(0,0);
+  // a view that was hidden could not animate its sweep, so light it on the way in
+  const v = $('#'+id);
+  if(v && typeof litHighlights === 'function') litHighlights(v, 80);
+}
+function err(sel,msg){ const n=$(sel); if(!msg){n.classList.add('hide');return;} n.textContent=msg; n.classList.remove('hide'); }
+
+function headers(){
+  const h = {'Content-Type':'application/json'};
+  const c = store.getItem('forge_code'); if(c) h['X-Forge-Code']=c;
+  const v = store.getItem('forge_vid'); if(v) h['X-Forge-Vid']=v;
+  return h;
+}
+async function api(path, body, method){
+  const r = await fetch(API+path, { method: method || (body?'POST':'GET'), headers: headers(), body: body?JSON.stringify(body):undefined });
+  const txt = await r.text();
+  let data = {}; try{ data = txt?JSON.parse(txt):{}; }catch(e){ data = {detail:txt.slice(0,200)}; }
+  if(!r.ok) throw new Error(data.detail || ('Request failed ('+r.status+')'));
+  return data;
+}
+if(!store.getItem('forge_vid')){ try{ store.setItem('forge_vid','v-'+Math.random().toString(36).slice(2)+Date.now().toString(36)); }catch(e){} }
+
+function setUser(u){
+  state.user = u;
+  if(u){ try{ store.setItem('forge_code', u.code); }catch(e){}
+    $('#creditVal').textContent = u.credits;
+    markLow(u.credits);
+    $('#creditPill').classList.remove('hide'); $('#giftBtn').classList.remove('hide'); $('#acctBtn').classList.remove('hide');
+    $('#newBtn').classList.remove('hide');
+    $('#integBtn').classList.remove('hide');
+  } else {
+    $('#creditPill').classList.add('hide'); $('#giftBtn').classList.add('hide'); $('#acctBtn').classList.add('hide');
+    $('#newBtn').classList.add('hide');
+    $('#integBtn').classList.add('hide');
+  }
+}
+function setCredits(n){
+  if(typeof n==='number' && state.user){ state.user.credits=n; $('#creditVal').textContent=n; markLow(n); }
+}
+/* Fewer than four credits is not enough to finish most builds, so say so before the build
+   stops halfway. */
+function markLow(n){ $('#creditPill').classList.toggle('low', typeof n==='number' && n < 4); }
+function setEngine(e){
+  const live = e && e.ok;
+  $('#engineDot').className = 'dot'+(live?' live':'');
+  const name = e && e.mode==='rate_limited' ? 'daily AI limit reached'
+    : !live ? 'built-in generator'
+    : e.mode==='pplx' ? 'Perplexity reasoning model'
+    : e.mode==='openrouter' ? 'reasoning model' : (e.model||'local model');
+  $('#engineTxt').textContent = name;
+  $('#enginePill').title = live
+    ? (e.mode==='pplx'
+        ? 'Perplexity built-in '+e.model+' · plans the architecture with extended thinking, then writes every file'
+      : e.mode==='openrouter'
+        ? 'OpenRouter '+e.model+(e.routed_to?' → '+e.routed_to:'')+' · plans with extended reasoning before writing code'
+        : 'Connected to '+e.url+' · '+e.model)
+    : 'No model reachable — using the built-in generator. '+(e.error||'');
+}
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  playIntro();
+  try{
+    const d = await api('/api/me');
+    setEngine(d.engine);
+    if(d.signed_in){ setUser(d.user); show('promptView'); } else { show('gate'); }
+  }catch(e){ err('#gateErr','Backend unreachable: '+e.message); show('gate'); }
+})();
+
+/* ---------------- gate ---------------- */
+$('#doSignup').onclick = async () => {
+  err('#gateErr',''); const b=$('#doSignup'); b.disabled=true; b.textContent='Creating…';
+  try{
+    const d = await api('/api/signup',{});
+    setUser(d.user);
+    $('#newCode').textContent = d.user.code;
+    $('#gateChoice').classList.add('hide'); $('#gateNew').classList.remove('hide');
+  }catch(e){ err('#gateErr',e.message); }
+  b.disabled=false; b.textContent='Create account — 10 free credits';
+};
+$('#copyCode').onclick = () => { navigator.clipboard?.writeText($('#newCode').textContent).then(()=>toast('Code copied')).catch(()=>toast('Copy manually')); };
+$('#gotoPrompt').onclick = () => show('promptView');
+$('#doLogin').onclick = async () => {
+  const code = $('#loginCode').value.trim();
+  if(!code) return err('#gateErr','Enter your code.');
+  err('#gateErr','');
+  try{ const d = await api('/api/login',{code}); setUser(d.user); toast('Welcome back'); show('promptView'); }
+  catch(e){ err('#gateErr',e.message); }
+};
+$('#loginCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#doLogin').click(); });
+
+/* ---------------- prompt ---------------- */
+const TEMPLATES = [
+  ['Habit tracker','Daily habits, streaks, weekly grid, local save.','A habit tracker where I add habits, tick them off each day, see a current streak per habit and a 7-day grid overview. Data saves locally.'],
+  ['Expense log','Add expenses by category, monthly total, chart.','An expense logger where I add an amount, category and note, see this month\u2019s total, a per-category breakdown chart and a filterable list.'],
+  ['Kanban board','Three columns, drag and drop cards.','A kanban board with To do / Doing / Done columns, drag-and-drop cards, inline card editing and localStorage persistence.'],
+  ['Markdown notes','Notes with live markdown preview and search.','A notes app with a sidebar list, a markdown editor with live preview, full-text search and local persistence.'],
+  ['Pomodoro timer','25/5 cycles, session log, sound cue.','A pomodoro timer with 25/5 cycles, start/pause/reset, an audible cue at the end of each block and a log of completed sessions today.'],
+  ['Invoice builder','Line items, totals, tax, print view.','An invoice builder where I fill in client details and line items, it calculates subtotal, tax and total, and has a clean print-ready view.'],
+  ['Flashcards','Decks, flip cards, spaced repetition.','A flashcard app where I create decks, flip through cards, mark them easy or hard and get harder cards more often. Saves locally.'],
+  ['Landing page','Hero, features, pricing, FAQ, contact.','A single-page product landing site with a hero, three feature blocks, a pricing table with two tiers, an FAQ accordion and a contact form.'],
+];
+const tg = $('#tplGrid');
+TEMPLATES.forEach(([t,d,p])=>{
+  const b = el('button','tpl'); b.append(el('b',null,t), el('span',null,d));
+  b.onclick = () => { $('#prompt').value = p; sync(); $('#prompt').focus(); toast('Template loaded'); };
+  tg.append(b);
+});
+function sync(){ $('#charCount').textContent = $('#prompt').value.length; }
+$('#prompt').addEventListener('input', sync);
+document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+  const ta=$('#prompt'); const add=b.dataset.add;
+  if(ta.value.includes(add)) return;
+  ta.value = (ta.value.trim()+' '+add).trim(); sync();
+});
+const TOOL_TEXT = {
+  detail:'Include empty states, loading states and simple input validation.',
+  mobile:'Design mobile-first with large tap targets, then scale up to desktop.',
+  dark:'Use a dark theme with high contrast text.',
+};
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => {
+  const ta=$('#prompt'), k=b.dataset.tool;
+  if(k==='clear'){ ta.value=''; state.attachments=[]; renderFiles(); sync(); return; }
+  if(k==='polish'){
+    const v=ta.value.trim(); if(!v) return toast('Write something first');
+    ta.value = v.replace(/\s+$/,'') + (v.endsWith('.')?'':'.') +
+      ' Make the UI clean and uncluttered, keep the whole thing in one file, handle empty states, and make it work well on both phone and desktop.';
+    sync(); toast('Prompt expanded'); return;
+  }
+  if(!ta.value.includes(TOOL_TEXT[k])){ ta.value = (ta.value.trim()+' '+TOOL_TEXT[k]).trim(); sync(); }
+});
+$('#attachBtn').onclick = () => $('#fileInput').click();
+$('#fileInput').onchange = async e => {
+  for(const f of [...e.target.files].slice(0,4)){
+    if(f.size > 2_500_000){ toast(f.name+' is too large (2.5 MB max)'); continue; }
+    const isImg = f.type.startsWith('image/');
+    const a = { name:f.name, kind: isImg?'image':'file' };
+    if(isImg){ a.preview = await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f)});
+               a.text = '(image reference: '+f.name+')'; }
+    else { a.text = (await f.text()).slice(0,4000); }
+    state.attachments.push(a);
+  }
+  e.target.value=''; renderFiles();
+};
+function renderFiles(){
+  const w=$('#fileList'); w.innerHTML='';
+  state.attachments.forEach((a,i)=>{
+    const d=el('span','file');
+    if(a.preview){ const im=document.createElement('img'); im.src=a.preview; im.alt=''; d.append(im); }
+    d.append(el('span',null,a.name));
+    const x=el('button',null,'×'); x.onclick=()=>{state.attachments.splice(i,1);renderFiles()}; d.append(x);
+    w.append(d);
+  });
+}
+$('#myWork').onclick = openAccount;
+
+$('#toClarify').onclick = () => startPlan();
+
+/* ---------------- reasoning ---------------- */
+/* The planner streams for a while, so the wait is filled with what it is actually doing:
+   its own words scrolling past, then each plan line landing as it is parsed. */
+
+const TK_STAGES = [
+  'reading your idea',
+  'choosing the screens',
+  'shaping the data',
+  'picking the files to write',
+  'looking for what could break',
+  'deciding what to ask you',
+];
+
+let tkTimer = null;
+
+function tkStage(i){
+  const n = $('#tkStage');
+  if(!n) return;
+  n.innerHTML = '';
+  n.append(document.createTextNode(TK_STAGES[i] + ' '));
+  const b = el('b', null, '·'.repeat(Math.min(i + 1, 6)));
+  n.append(b);
+}
+
+async function startPlan(){
+  const p = $('#prompt').value.trim();
+  if(p.length < 12) return err('#promptErr','Give a bit more detail — at least a sentence.');
+  err('#promptErr','');
+  state.prompt = p;
+  state.plan = []; state.needed = []; state.missing = []; state.questions = []; state.answers = [];
+  $('#tkStream').textContent = '';
+  $('#tkPlan').innerHTML = '';
+  $('#tkBack').classList.add('hide');
+  err('#thinkErr','');
+  $('#tkTitle').textContent = 'Working out how to build this';
+  $('#tkSub').textContent = 'Reading your idea, choosing the screens and the data, and deciding what to ask you.';
+  show('thinkView');
+
+  // The stage line advances on a timer because the model does not announce its phases.
+  // It is a readable proxy for progress, not a claim about what the model is doing.
+  let si = 0; tkStage(0);
+  clearInterval(tkTimer);
+  tkTimer = setInterval(() => { si = Math.min(si + 1, TK_STAGES.length - 1); tkStage(si); }, 7000);
+
+  try{
+    await planStream(p);
+  }catch(e){
+    clearInterval(tkTimer);
+    err('#thinkErr', e.message || 'Planning failed.');
+    $('#tkBack').classList.remove('hide');
+    return;
+  }
+  clearInterval(tkTimer);
+}
+
+async function planStream(prompt){
+  const res = await fetch(API + '/api/plan', {
+    method:'POST',
+    headers: headers(),
+    body: JSON.stringify({prompt, attachments: state.attachments.map(a=>({name:a.name,kind:a.kind,text:a.text}))}),
+  });
+  if(!res.ok){
+    let m = 'Planning failed';
+    try{ m = (await res.json()).detail || m; }catch(_){}
+    throw new Error(m);
+  }
+  const rd = res.body.getReader(); const dec = new TextDecoder();
+  let buf = '';
+  for(;;){
+    const {value, done} = await rd.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for(const block of parts) handlePlanEvent(block);
+  }
+  if(buf.trim()) handlePlanEvent(buf);
+}
+
+function handlePlanEvent(block){
+  let ev = 'message', data = '';
+  for(const line of block.split('\n')){
+    if(line.startsWith('event: ')) ev = line.slice(7).trim();
+    else if(line.startsWith('data: ')) data += line.slice(6);
+  }
+  if(!data) return;
+  let d; try{ d = JSON.parse(data); }catch(_){ return; }
+
+  if(ev === 'start'){ setCredits(d.credits); }
+  else if(ev === 'reason' || ev === 'tick'){ tkFeed(d.t || ''); }
+  else if(ev === 'warn'){ err('#thinkErr', d.m || ''); }
+  else if(ev === 'plan'){ state.plan = d.lines || []; paintPlan(d.lines || []); }
+  else if(ev === 'integrations'){ state.needed = d.needed || []; state.missing = d.missing || []; }
+  else if(ev === 'questions'){
+    state.questions = d.questions || [];
+    state.title = d.title || 'Untitled app';
+  }
+  else if(ev === 'done'){ setCredits(d.credits); finishPlan(); }
+}
+
+/* The raw stream is the model writing its plan. Showing it verbatim would flash half-typed
+   KEY: lines, so only the value side is fed through, and it is capped so the box never grows. */
+let tkBuf = '';
+function tkFeed(t){
+  tkBuf += t;
+  const clean = tkBuf
+    .replace(/\n?---[\s\S]*$/, '')            // drop the JSON half entirely
+    .replace(/^(SUMMARY|SCREEN|DATA|STACK|RISK):\s*/gm, '')
+    .trim();
+  const n = $('#tkStream');
+  n.textContent = clean.slice(-420);
+  const cur = el('span','tk-cur'); n.append(cur);
+  n.scrollTop = n.scrollHeight;
+}
+
+function paintPlan(lines){
+  const w = $('#tkPlan'); w.innerHTML = '';
+  $('#tkStream').textContent = '';
+  lines.forEach((l, i) => {
+    const row = el('div','pl k-' + l.k.toLowerCase());
+    row.style.animationDelay = (i * 70) + 'ms';
+    row.append(el('k', null, l.k === 'SCREEN' ? 'screen' : l.k.toLowerCase()),
+               el('v', null, l.v));
+    w.append(row);
+  });
+  $('#tkTitle').textContent = 'Here is the plan';
+  $('#tkSub').textContent = 'Read it over — the questions come next.';
+  $('#tkStage').textContent = '';
+}
+
+/* Once the plan is in, hold it on screen briefly so it can be read, then move to the chat. */
+function finishPlan(){
+  const wait = REDUCED_OK() ? 0 : 1500;
+  setTimeout(() => {
+    renderRecap();
+    renderIntegAsk();
+    renderChat();
+    paintModels();
+    show('clarifyView');
+  }, wait);
+}
+
+function REDUCED_OK(){ return reducedMotion(); }
+
+/* ---------------- clarify ---------------- */
+/* Questions arrive one at a time like a conversation: the model asks, you tap an answer, the
+   next one appears. It is the same data the old list used — answering out of order was never
+   useful, and one question on screen is far less work to read than five. */
+
+function renderRecap(){
+  const w = $('#planRecap'); w.innerHTML = '';
+  if(!state.plan || !state.plan.length) return;
+  const sum = state.plan.find(l => l.k === 'SUMMARY');
+  const box = el('div','ig-ask');
+  box.style.borderColor = 'var(--line-2)';
+  box.style.background = 'var(--surface)';
+  box.append(el('h4', null, 'The plan'));
+  box.append(el('p', null, sum ? sum.v : 'Ready to build.'));
+  const more = el('button','icon-btn','See the full plan');
+  more.onclick = () => { renderPlanModal(); };
+  box.append(more);
+  w.append(box);
+}
+
+function renderPlanModal(){
+  modal('The plan', (b) => {
+    (state.plan || []).forEach(l => {
+      const row = el('div','pl k-' + l.k.toLowerCase());
+      row.append(el('k', null, l.k === 'SCREEN' ? 'screen' : l.k.toLowerCase()),
+                 el('v', null, l.v));
+      b.append(row);
+    });
+  });
+}
+
+/* If the app needs an account the person has not connected, say so once, here, before any
+   code is written — that is the only moment the answer changes what gets built. Declining is
+   a first-class choice: every integration has an offline path, so "do it later" still ships a
+   working app. */
+function renderIntegAsk(){
+  const w = $('#integAsk'); w.innerHTML = '';
+  if(state.integLater) return;
+  const missing = (state.needed || []).filter(r => !r.connected);
+  if(!missing.length) return;
+  const box = el('div','ig-ask');
+  box.append(el('h4', null, missing.length === 1
+    ? 'This app needs one account connected'
+    : 'This app needs ' + missing.length + ' accounts connected'));
+  box.append(el('p', null, 'Connect them now and the app will use your real keys. Skip, and it still gets built and runs — each part falls back to a local version you can upgrade later by pasting the key in.'));
+  const ul = el('ul');
+  missing.forEach(r => {
+    const li = el('li');
+    li.append(el('b', null, r.label));
+    li.append(document.createTextNode(' — ' + r.why));
+    ul.append(li);
+  });
+  box.append(ul);
+  const row = el('div');
+  row.style.cssText = 'display:flex;gap:9px;flex-wrap:wrap';
+  const go = el('button','btn acc','Connect ' + (missing.length === 1 ? missing[0].label : 'them'));
+  go.onclick = () => openIntegrations(missing.map(r => r.id));
+  const later = el('button','btn sec','Do it later');
+  later.onclick = () => { state.integLater = true; renderIntegAsk(); };
+  row.append(go, later);
+  box.append(row);
+  w.append(box);
+}
+
+function renderChat(){
+  const w = $('#qChat'); w.innerHTML = '';
+  state.answers = (state.questions || []).map(q => ({q: q.q, a: ''}));
+  state.qAt = 0;
+  askNext();
+}
+
+function askNext(){
+  const w = $('#qChat');
+  const qs = state.questions || [];
+  const i = state.qAt;
+  if(i >= qs.length){
+    const done = el('div','bub ai');
+    done.append(el('b', null, 'That is everything I need. '));
+    done.append(document.createTextNode('Pick a model below and generate.'));
+    w.append(done);
+    $('#skipAll').classList.add('hide');
+    $('#doGenerate').focus();
+    return;
+  }
+  const q = qs[i];
+  const bub = el('div','bub ai');
+  bub.append(el('span','qn', 'question ' + (i + 1) + ' of ' + qs.length));
+  bub.append(document.createTextNode(q.q));
+  if(q.why) bub.append(el('span','wy', q.why));
+  w.append(bub);
+
+  const opts = el('div','opts');
+  (q.options || []).forEach(o => {
+    const b = el('button','opt2', o);
+    b.onclick = () => answer(i, o, opts);
+    opts.append(b);
+  });
+  const own = el('button','opt2 own','Something else…');
+  own.onclick = () => {
+    const t = el('input');
+    t.className = 'own-in';
+    t.placeholder = 'Type your answer, then press Enter';
+    t.style.cssText = 'font:400 13.5px/1 inherit;padding:9px 13px;border-radius:999px;border:1px solid var(--acc);min-width:260px';
+    t.onkeydown = e => { if(e.key === 'Enter' && t.value.trim()) answer(i, t.value.trim(), opts); };
+    opts.innerHTML = ''; opts.append(t); t.focus();
+  };
+  opts.append(own);
+  const skip = el('button','opt2 own','Skip');
+  skip.onclick = () => answer(i, '', opts, true);
+  opts.append(skip);
+  w.append(opts);
+  opts.scrollIntoView({block:'nearest', behavior: reducedMotion() ? 'auto' : 'smooth'});
+}
+
+function answer(i, val, optsNode, skipped){
+  state.answers[i] = {q: state.questions[i].q, a: val};
+  optsNode.classList.add('done');
+  const w = $('#qChat');
+  const me = el('div','bub me', skipped ? 'Skip this one' : val);
+  if(skipped) me.style.opacity = '.66';
+  w.append(me);
+  state.qAt = i + 1;
+  // A short pause with a typing indicator, so the exchange reads as a conversation rather
+  // than everything appearing at once.
+  if(reducedMotion()){ askNext(); return; }
+  const wait = el('div','bub ai');
+  const dots = el('span','typing');
+  dots.append(el('s'), el('s'), el('s'));
+  wait.append(dots);
+  w.append(wait);
+  wait.scrollIntoView({block:'nearest', behavior:'smooth'});
+  setTimeout(() => { wait.remove(); askNext(); }, 420);
+}
+$('#backToPrompt').onclick = () => show('promptView');
+$('#skipAll').onclick = () => { state.answers = state.answers.map(a=>({q:a.q,a:a.a||'no preference'})); startBuild(); };
+$('#doGenerate').onclick = () => startBuild();
+wireDry();
+
+/* ---------------- build ---------------- */
+/* ---------------------------------------------------------------- models */
+/* The code pane's state lives out here so the repair pass can paint into the same
+   tabs and preview that the build used. */
+let files = new Map();            // path -> {text, done}
+let active = null;                // path shown in the code pane
+function paintTabs(){
+  const strip = $('#fileTabs'); if(!strip) return;
+  strip.textContent='';
+  for(const [path, f] of files){
+    const b = el('button','ftab'+(path===active?' on':''));
+    b.type='button'; b.textContent = path;
+    if(!f.done) b.append(el('i','wip'));
+    b.onclick = () => { active = path; paintTabs(); paintCode(true); };
+    strip.append(b);
+  }
+}
+function paintCode(force){
+  const out = $('#codeOut'); if(!out || !active) return;
+  const f = files.get(active); if(!f) return;
+  const text = f.text || '';
+  const tail = text.slice(-14000);
+  out.textContent = (text.length>14000?'\u2026\n':'') + tail;
+  if(!f.done) out.append(el('span','cursor'));
+  if(force) out.scrollTop = 0; else out.scrollTop = out.scrollHeight;
+  $('#fileLabel').textContent = active;
+  $('#byteCount').textContent = fmtBytes(text.length);
+}
+
+let MODELS = null;
+async function loadModels(){
+  if(MODELS) return MODELS;
+  try{
+    const r = await fetch(API+'/api/models',{headers:headers()});
+    const d = await r.json();
+    MODELS = d.models || [];
+    let saved=null; try{ saved=store.getItem('forge_model'); }catch(e){}
+    if(saved && MODELS.some(m=>m.id===saved)) state.model = saved;
+    if(!state.model) state.model = d.default || (MODELS[0]||{}).id;
+  }catch(e){ MODELS = []; }
+  return MODELS;
+}
+function modelById(id){ return (MODELS||[]).find(m=>m.id===id) || null; }
+async function paintModels(){
+  const ms = await loadModels(); const row = $('#mRow'); if(!row) return;
+  row.innerHTML='';
+  ms.forEach(m=>{
+    const b = el('button','mopt'+(m.id===state.model?' on':''));
+    b.append(el('b',null,m.label),
+             el('span','mc', m.per_file+' credit'+(m.per_file===1?'':'s')+' per file'),
+             el('span','mb', m.blurb));
+    b.onclick=()=>{ state.model=m.id; try{ store.setItem('forge_model',m.id); }catch(e){} paintModels(); };
+    row.append(b);
+  });
+  const cur = modelById(state.model);
+  $('#mNote').textContent = cur
+    ? 'A typical app is 6 files, so about '+(cur.per_file*6)+' credits. '
+      +'You are only charged for files that finish writing.'
+    : '';
+}
+
+/* ---------------------------------------------------------------- billing meter */
+let billed = {files:0, spent:0};
+function resetMeter(){
+  billed = {files:0, spent:0};
+  $('#meter').classList.add('hide');
+  $('#meterText').textContent=''; $('#meterSpark').textContent='';
+}
+function bumpMeter(cost, left){
+  if(!cost) return;
+  billed.files++; billed.spent += cost;
+  const m=$('#meter'); m.classList.remove('hide');
+  const cur = modelById(state.model);
+  $('#meterText').innerHTML = '<b>'+billed.files+'</b> file'+(billed.files===1?'':'s')
+    + ' billed · <b>'+billed.spent+'</b> credit'+(billed.spent===1?'':'s')+' spent'
+    + (typeof left==='number' ? ' · <b>'+left+'</b> left' : '')
+    + (cur ? ' <span class="muted">('+cur.label+', '+cur.per_file+'/file)</span>' : '');
+  const sp=$('#meterSpark'); sp.innerHTML='<span class="spark">−'+cost+'</span>';
+  setTimeout(()=>{ sp.innerHTML=''; }, 950);
+}
+
+/* ---------------------------------------------------------------- out of credits */
+function showDry(d){
+  const w=$('#dry'); w.classList.remove('hide');
+  $('#dryTitle').textContent = 'Credits exhausted — build paused';
+  $('#dryMsg').textContent = (d.msg||'')
+    + ' Nothing you already paid for is lost: redeem a code and Forge finishes only the files that are still missing.';
+  const fl=$('#dryFiles'); fl.innerHTML='';
+  (d.files_written||[]).forEach(f=> fl.append(el('span',null,f)));
+  state.resumeId = d.project_id || state.resumeId;
+  $('#dryResume').classList.add('hide');
+  $('#dryCode').value='';
+  w.scrollIntoView({behavior:'smooth', block:'center'});
+}
+function wireDry(){
+  $('#dryRedeem').onclick = async ()=>{
+    const f=$('#dryCode'), b=$('#dryRedeem');
+    if(!f.value.trim()) return;
+    b.disabled=true; b.textContent='Redeeming…';
+    try{
+      const d = await api('/api/redeem',{code:f.value.trim()});
+      setUser(d.user); toast('+'+d.added+' credits');
+      $('#dryMsg').textContent = 'Topped up by '+d.added+' credits. Pick up where the build stopped — '
+        + 'only the missing files will be written and billed.';
+      $('#dryFiles').innerHTML='';
+      $('#dryResume').classList.remove('hide');
+      f.classList.add('hide'); b.classList.add('hide');
+    }catch(e){ toast(e.message); b.disabled=false; b.textContent='Redeem'; }
+  };
+  $('#dryResume').onclick = ()=>{
+    $('#dry').classList.add('hide');
+    startBuild({resume:state.resumeId});
+  };
+}
+
+/* ---------------------------------------------------------------- issues + fix */
+function closePop(){ const o=$('#issuePop'); if(o) o.remove(); }
+function showIssues(list, pid){
+  closePop();
+  if(!list || !list.length) return;
+  state.projectId = pid || state.projectId;
+  const pop = el('div','pop'); pop.id='issuePop';
+  const hd = el('header');
+  hd.append(el('i','dot bad'), el('b',null,
+    list.length+' problem'+(list.length===1?'':'s')+' found in the code'));
+  const x = el('button','x','×'); x.onclick=closePop; hd.append(x);
+  const bd = el('div','body');
+  const ul = el('ul');
+  list.slice(0,8).forEach(i=>{
+    const li=el('li');
+    li.innerHTML = '<code>'+esc(i.file + (i.line?(':'+i.line):''))+'</code> '+esc(i.msg);
+    ul.append(li);
+  });
+  bd.append(ul);
+  if(list.length>8) bd.append(el('p','sub','…and '+(list.length-8)+' more.'));
+  const acts = el('div','acts');
+  const fix = el('button','btn acc','Fix it');
+  fix.onclick = ()=> runFix(list.length);
+  const ign = el('button','btn sec','Ignore');
+  ign.onclick = closePop;
+  acts.append(fix, ign);
+  bd.append(acts);
+  const cur = modelById(state.model);
+  bd.append(el('p','sub','Forge sends the errors back to '
+    + (cur?cur.label:'the model') + ', which rewrites only the broken files'
+    + (cur?(' — '+cur.per_file+' credits each'):'') + '.'));
+  pop.append(hd, bd);
+  document.body.append(pop);
+}
+function showClean(msg){
+  closePop();
+  const pop=el('div','pop'); pop.id='issuePop';
+  const hd=el('header'); hd.append(el('i','dot ok'), el('b',null,'No problems found'));
+  const x=el('button','x','×'); x.onclick=closePop; hd.append(x);
+  const bd=el('div','body'); bd.append(el('p','sub',msg||'Every file passed the checks.'));
+  pop.append(hd,bd); document.body.append(pop);
+  setTimeout(closePop, 6000);
+}
+
+async function runFix(count, note){
+  let pop=$('#issuePop');
+  if(!pop && note){
+    /* A user-described change has no issue list to show, so give it its own progress popup. */
+    pop = el('div','pop'); pop.id='issuePop';
+    const hd=el('header'); hd.append(el('i','dot bad'), el('b',null,'Applying your change…'));
+    const x=el('button','x','\u00d7'); x.onclick=closePop; hd.append(x);
+    const bd=el('div','body'); bd.append(el('div','acts'));
+    pop.append(hd,bd); document.body.append(pop);
+  }
+  if(pop){
+    const a=pop.querySelector('.acts'); if(a) a.innerHTML='';
+    pop.querySelector('header b').textContent = note
+      ? 'Applying your change…'
+      : 'Fixing '+count+' problem'+(count===1?'':'s')+'…';
+    pop.querySelector('header i').className='dot bad';
+  }
+  const out=$('#codeOut'); resetMeter();
+  try{
+    const res = await fetch(API+'/api/fix',{method:'POST',headers:headers(),
+      body:JSON.stringify({project_id:state.projectId, model:state.model,
+                           note: note || ''})});
+    if(!res.ok){ const t=await res.text(); let m=t; try{m=JSON.parse(t).detail}catch(e){}; throw new Error(m); }
+    const ct = res.headers.get('content-type')||'';
+    if(ct.includes('application/json')){
+      const d=await res.json(); closePop(); showClean(d.msg); return;
+    }
+    const rd=res.body.getReader(), dec=new TextDecoder(); let acc='', ev, lastPaint=0;
+    while(true){
+      const {value,done}=await rd.read(); if(done) break;
+      acc += dec.decode(value,{stream:true});
+      const parts=acc.split('\n\n'); acc=parts.pop();
+      for(const part of parts){
+        ev = (part.match(/^event: (.*)$/m)||[])[1];
+        const dm=(part.match(/^data: (.*)$/m)||[])[1];
+        if(!ev||!dm) continue;
+        const data=JSON.parse(dm);
+        if(ev==='status' && typeof data.credits==='number') setCredits(data.credits);
+        if(ev==='file_open'){
+          if(!files.has(data.path)) files.set(data.path,{text:'',done:false});
+          else files.get(data.path).text='';
+          files.get(data.path).done=false;
+          active=data.path; paintTabs(); paintCode();
+          if(pop) pop.querySelector('header b').textContent='Rewriting '+data.path;
+        }
+        if(ev==='chunk'){
+          const f=files.get(data.path); if(!f) continue;
+          f.text += data.t;
+          if(data.path===active && performance.now()-lastPaint>45){ lastPaint=performance.now(); paintCode(); }
+        }
+        if(ev==='file_close'){
+          const f=files.get(data.path); if(f) f.done=true;
+          if(typeof data.credits==='number') setCredits(data.credits);
+          bumpMeter(data.cost, data.credits);
+          paintTabs(); if(data.path===active) paintCode();
+        }
+        if(ev==='exhausted'){ closePop(); showDry(data); return; }
+        if(ev==='fail'){ closePop(); toast(data.msg); return; }
+        if(ev==='done'){
+          state.files = data.files || state.files;
+          state.preview = data.preview || state.preview;
+          state.entry = data.entry || state.entry;
+          if(typeof data.credits==='number') setCredits(data.credits);
+          files.clear();
+          for(const [path,text] of Object.entries(state.files)) files.set(path,{text,done:true});
+          active = state.entry || active;
+          rebuildPanes();
+          closePop();
+          if(note){
+            showClean('Rewrote '+(data.changed||[]).length+' file'
+              +(((data.changed||[]).length)===1?'':'s')+'. Your change is live in the preview.');
+            toast('Change applied');
+            return;
+          }
+          if(data.issues && data.issues.length){
+            showIssues(data.issues, state.projectId);
+            toast('Fixed '+(data.before-data.issues.length)+' of '+data.before+' — '+data.issues.length+' left');
+          } else {
+            showClean('Rewrote '+(data.changed||[]).length+' file'
+              +(((data.changed||[]).length)===1?'':'s')+'. All checks pass now.');
+            toast('All '+data.before+' problem'+(data.before===1?'':'s')+' fixed');
+          }
+        }
+      }
+    }
+  }catch(e){ closePop(); toast(e.message); }
+}
+
+/* Repaint the code tabs and the live preview from whatever is in `files` / state.
+   Used after a build, after a repair, and when a remix is loaded. */
+function rebuildPanes(){
+  paintTabs(); paintCode(true);
+  $('#fileLabel').textContent = (active||'project files')+' · '+files.size
+    +' file'+(files.size===1?'':'s');
+  $('#prevFrame').srcdoc = state.preview || '';
+  $('#prevNote').classList.remove('hide');
+}
+
+/* A permanent "change something" box under the build. It reuses the repair endpoint:
+   the note is sent to the model, which rewrites only the files it needs to. */
+function showChangeBox(){
+  let box = $('#changeBox');
+  if(!box){
+    box = el('div'); box.id='changeBox'; box.className='dtbox';
+    box.style.margin='16px 0 0';
+    const h = el('div'); h.style.display='flex'; h.style.alignItems='center'; h.style.gap='8px';
+    h.append(el('b',null,'Change this app'));
+    const hint = el('span','muted'); hint.style.fontSize='12px';
+    hint.id='changeCost';
+    h.append(hint);
+    const ta = el('textarea','field'); ta.id='changeNote'; ta.rows=2;
+    ta.placeholder='e.g. add a dark mode toggle in the header, and sort the list by date';
+    ta.style.cssText='resize:vertical;margin-top:10px';
+    const row = el('div'); row.style.cssText='display:flex;gap:8px;margin-top:8px;flex-wrap:wrap';
+    const go = el('button','btn acc','Apply change'); go.id='changeGo';
+    const chk = el('button','btn sec','Re-check the code'); chk.id='changeChk';
+    row.append(go, chk);
+    box.append(h, ta, row);
+    $('#buildView').append(box);
+    go.onclick = async () => {
+      const note = ta.value.trim();
+      if(!note){ toast('Describe what to change first'); return; }
+      go.disabled=true; go.textContent='Working…';
+      await runFix(0, note);
+      go.disabled=false; go.textContent='Apply change'; ta.value='';
+    };
+    chk.onclick = async () => {
+      chk.disabled=true; chk.textContent='Checking…';
+      try{
+        const r = await fetch(API+'/api/check/'+state.projectId,{headers:headers()});
+        const d = await r.json();
+        if(d.count) showIssues(d.issues, state.projectId);
+        else showClean('Checked every file — nothing wrong.');
+      }catch(e){ toast(e.message); }
+      chk.disabled=false; chk.textContent='Re-check the code';
+    };
+  }
+  const cur = modelById(state.model);
+  $('#changeCost').textContent = cur
+    ? '· '+cur.per_file+' credits per file the model rewrites' : '';
+  box.classList.remove('hide');
+}
+
+/* ================================================================ opening animation */
+/* Plays once per browser. The mark draws itself, the wordmark rises letter by letter, a
+   blue-to-yellow bar fills, then the whole thing lifts away and the landing content
+   staggers in behind it. Skipped entirely under prefers-reduced-motion. */
+/* A function, not a const — boot() runs before this point in the file, and a const would
+   still be in its temporal dead zone. */
+function reducedMotion(){
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch(e){ return false; }
+}
+
+function staggerIn(root, step){
+  const items = (root||document).querySelectorAll('.rise:not(.in)');
+  items.forEach((n,i)=> setTimeout(()=> n.classList.add('in'), i*(step||90)));
+}
+function litHighlights(root, delay){
+  (root||document).querySelectorAll('.hi:not(.lit)').forEach((n,i)=>
+    setTimeout(()=> n.classList.add('lit'), (delay||0) + i*140));
+}
+
+function playIntro(){
+  const box = $('#intro');
+  if(!box) return;
+  const seen = store.getItem('forge_intro') === '1';
+  if(reducedMotion() || seen){
+    box.remove();
+    staggerIn(document, 0); litHighlights(document, 120);
+    return;
+  }
+  store.setItem('forge_intro','1');
+  document.body.style.overflow = 'hidden';
+
+  // measure each stroke so the dash animation matches its real length
+  box.querySelectorAll('.introMark path:not(.spark)').forEach((path, i) => {
+    const len = Math.ceil(path.getTotalLength());
+    path.style.setProperty('--len', len);
+    path.classList.add('draw');
+    path.style.animationDelay = (i * 0.16) + 's';
+  });
+  const spark = box.querySelector('.spark');
+  if(spark){
+    spark.style.animation = 'sparkIn .4s cubic-bezier(.22,.8,.3,1) .62s forwards';
+    spark.style.transformOrigin = '20.5px 5.7px';
+  }
+  const word = $('#introWord');
+  word.textContent = '';
+  'Forge'.split('').forEach((ch, i) => {
+    const sp = el('span', null, ch);
+    sp.style.animationDelay = (0.34 + i * 0.055) + 's';
+    if(i === 0) sp.style.color = 'var(--acc)';
+    if(i === 4) sp.style.color = 'var(--acc2-deep)';
+    word.append(sp);
+  });
+
+  setTimeout(() => {
+    box.classList.add('gone');
+    document.body.style.overflow = '';
+    staggerIn(document, 90);
+    litHighlights(document, 320);
+    setTimeout(() => box.remove(), 800);
+  }, 1650);
+}
+
+/* ================================================================ back to the prompt */
+/* Starting a new app clears the previous one out of the build view, so you never land on
+   somebody else's tabs or a stale preview. */
+function newApp(){
+  state.projectId = null; state.files = null; state.preview = ''; state.entry = null;
+  state.answers = null; state.questions = null; state.issues = null; state.title = '';
+  /* The plan, the integration prompt and the publish receipt all belong to the old app. */
+  state.plan = []; state.needed = []; state.missing = []; state.integLater = false;
+  state.qAt = 0; state.publishedSlug = null;
+  clearInterval(tkTimer);
+  const pb = $('#pubBtn'); if(pb) pb.textContent = 'Publish — 50 credits';
+  files = new Map(); active = null;
+  closePop();
+  const cb = $('#changeBox'); if(cb) cb.classList.add('hide');
+  $('#dry').classList.add('hide');
+  $('#buildErr').classList.add('hide');
+  const pr = $('#prompt'); if(pr){ pr.value = ''; }
+  err('#promptErr','');
+  const t = $('#toClarify'); if(t){ t.disabled = false; t.textContent = 'Continue — 1 credit'; }
+  show('promptView');
+  setTimeout(()=> pr && pr.focus(), 120);
+}
+
+/* ================================================================ explore gallery */
+const EX = { sort:'new', q:'', items:[], slug:null };
+
+function ago(ts){
+  const d = Math.max(0, Date.now()/1000 - ts);
+  if(d < 90) return 'just now';
+  if(d < 5400) return Math.round(d/60)+'m ago';
+  if(d < 129600) return Math.round(d/3600)+'h ago';
+  return Math.round(d/86400)+'d ago';
+}
+function icon(path, w){
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('fill','none');
+  svg.setAttribute('stroke','currentColor'); svg.setAttribute('stroke-width', w||'1.5');
+  svg.setAttribute('stroke-linecap','round'); svg.setAttribute('stroke-linejoin','round');
+  const pth = document.createElementNS('http://www.w3.org/2000/svg','path');
+  pth.setAttribute('d', path); svg.append(pth); return svg;
+}
+const I_UP   = 'M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0l4.5-8a2 2 0 0 1 3.6 1.5L14 9h4.6a2 2 0 0 1 2 2.5l-1.8 7A2 2 0 0 1 16.8 20H7';
+const I_CMT  = 'M21 12a8 8 0 0 1-8 8H8l-5 3 1.2-4.4A8 8 0 1 1 21 12z';
+const I_RMX  = 'M4 4h6v6H4zM14 14h6v6h-6zM10 7h5a2 2 0 0 1 2 2v5';
+const I_EYE  = 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6zm10 2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z';
+
+function appCard(it){
+  const c = el('div','acard');
+  const shot = el('div','shot');
+  /* Each card runs the real published app, scaled down — a live thumbnail with no
+     screenshot pipeline to maintain. */
+  const fr = document.createElement('iframe');
+  fr.setAttribute('sandbox','allow-scripts');
+  fr.setAttribute('scrolling','no');
+  fr.setAttribute('tabindex','-1');
+  fr.setAttribute('aria-hidden','true');
+  fr.loading = 'lazy';
+  shot.append(fr);
+  /* Two things have to land before a thumbnail can render: the card must be on screen,
+     and its HTML must have arrived. Whichever happens second does the mounting. */
+  c._seen = false;
+  c._mount = () => {
+    c._seen = true;
+    if(fr.dataset.on || !it._html) return;
+    fr.dataset.on = '1';
+    fr.srcdoc = it._html;
+    shot.classList.add('ready');
+  };
+  const meat = el('div','meat');
+  meat.append(el('h3',null,it.title));
+  if(it.summary) meat.append(el('p','sm',it.summary));
+  const by = el('div','by'); by.textContent = 'by '+it.author+' · '+ago(it.at);
+  if(it.mine){ by.textContent += ' · yours'; }
+  meat.append(by);
+  if(it.remix_of){ const r=el('span','rmx','remix'); r.style.alignSelf='flex-start'; meat.append(r); }
+  const foot = el('div','foot');
+  const mk = (path, n) => { const w=el('span','mini'); w.append(icon(path), el('b',null,String(n))); return w; };
+  foot.append(mk(I_UP, it.likes), mk(I_CMT, it.comments), mk(I_RMX, it.remixes),
+              mk(I_EYE, it.views));
+  c.append(shot, meat, foot);
+  c.onclick = () => openApp(it.slug);
+  c.tabIndex = 0;
+  c.onkeydown = e => { if(e.key==='Enter') openApp(it.slug); };
+  return c;
+}
+
+let exIO = null;
+async function loadExplore(){
+  show('exploreView');
+  litHighlights($('#exploreView'), 60);
+  const g = $('#exGrid');
+  g.innerHTML = '<p class="muted" style="padding:20px 0">Loading published apps…</p>';
+  try{
+    const r = await fetch(API+'/api/explore?sort='+EX.sort+'&q='+encodeURIComponent(EX.q),
+                          {headers:headers()});
+    const d = await r.json();
+    EX.items = d.items || [];
+  }catch(e){ g.innerHTML=''; toast('Could not load the gallery'); return; }
+  g.innerHTML = '';
+  $('#exEmpty').classList.toggle('hide', EX.items.length>0);
+  if(exIO) exIO.disconnect();
+  exIO = new IntersectionObserver(es=>{
+    es.forEach(e=>{ if(e.isIntersecting){ e.target._mount && e.target._mount(); exIO.unobserve(e.target); } });
+  },{rootMargin:'200px'});
+  EX.items.forEach(it=>{ const c=appCard(it); g.append(c); exIO.observe(c); });
+  /* Thumbnails need the flattened HTML, which the list endpoint deliberately omits to
+     keep the payload small. Fetch it per card, lazily, as they scroll into view. */
+  EX.items.forEach(async (it,i)=>{
+    const card = g.children[i]; if(!card) return;
+    try{
+      const r = await fetch(API+'/api/pub/'+it.slug,{headers:headers()});
+      const d = await r.json();
+      it._html = d.html || '';
+      if(card._seen) card._mount();
+    }catch(e){}
+  });
+}
+
+async function openApp(slug){
+  EX.slug = slug;
+  show('detailView');
+  $('#dtTitle').textContent = 'Loading…';
+  $('#dtBy').textContent=''; $('#dtSum').textContent='';
+  $('#dtFrame').srcdoc=''; $('#dtFiles').innerHTML=''; $('#dtCList').innerHTML='';
+  let d;
+  try{
+    const r = await fetch(API+'/api/pub/'+slug,{headers:headers()});
+    if(!r.ok) throw new Error((await r.json()).detail||'Not found');
+    d = await r.json();
+  }catch(e){ toast(e.message); show('exploreView'); return; }
+  $('#dtTitle').textContent = d.title;
+  $('#dtBy').textContent = 'by '+d.author+' · published '+ago(d.at)
+    + (d.remix_of ? ' · remixed from '+d.remix_of : '');
+  $('#dtSum').textContent = d.summary || 'No description.';
+  $('#dtViews').textContent = d.views+' view'+(d.views===1?'':'s');
+  $('#dtFrame').srcdoc = d.html || '';
+  $('#dtOpen').href = d.url;
+  $('#dtRemix').disabled = !d.can_remix;
+  $('#dtRemixNote').textContent = d.can_remix
+    ? 'Copying is free. You only spend credits if you ask the model to change it.'
+    : 'The original project is no longer available to copy.';
+  const fl = $('#dtFiles'); fl.innerHTML='';
+  (d.files||[]).forEach(f=> fl.append(el('span',null,f)));
+  paintVotes(d);
+  loadComments(slug);
+}
+
+function paintVotes(d){
+  $('#dtUpN').textContent = d.likes;
+  $('#dtDownN').textContent = d.dislikes;
+  $('#dtUp').classList.toggle('on', d.my_vote===1);
+  $('#dtDown').classList.toggle('on', d.my_vote===-1);
+}
+async function castVote(val){
+  if(!state.user){ toast('Create an account first — it is free'); return; }
+  try{
+    const d = await api('/api/vote',{slug:EX.slug, val});
+    paintVotes(d);
+  }catch(e){ toast(e.message); }
+}
+
+async function loadComments(slug){
+  const w = $('#dtCList'); w.innerHTML='';
+  try{
+    const r = await fetch(API+'/api/comments/'+slug,{headers:headers()});
+    const d = await r.json();
+    $('#dtCN').textContent = d.items.length ? d.items.length+' so far' : '';
+    if(!d.items.length){ w.append(el('p','sub','No comments yet. Be the first.')); return; }
+    d.items.forEach(c=> w.append(commentRow(c)));
+  }catch(e){}
+}
+function commentRow(c){
+  const w = el('div','c');
+  const who = el('div','who'); who.append(el('span',null,c.author+' · '+ago(c.at)));
+  if(c.mine){
+    const del = el('button','del','Delete');
+    del.onclick = async ()=>{
+      try{ await fetch(API+'/api/comments/'+c.id,{method:'DELETE',headers:headers()});
+           w.remove(); loadComments(EX.slug); }catch(e){ toast('Could not delete'); }
+    };
+    who.append(del);
+  }
+  w.append(who, el('div','bd',c.body));
+  return w;
+}
+
+/* ---------------- wiring ---------------- */
+$('#newBtn').onclick = newApp;
+$('#exploreBtn').onclick = () => loadExplore();
+$('#backToExplore').onclick = () => loadExplore();
+$('#exTabs').onclick = e => {
+  const b = e.target.closest('.extab'); if(!b) return;
+  EX.sort = b.dataset.sort;
+  [...$('#exTabs').children].forEach(x=>x.classList.toggle('on', x===b));
+  loadExplore();
+};
+let exT = null;
+$('#exQ').oninput = () => { clearTimeout(exT); exT = setTimeout(()=>{ EX.q=$('#exQ').value; loadExplore(); }, 260); };
+$('#dtUp').onclick = () => castVote(1);
+$('#dtDown').onclick = () => castVote(-1);
+$('#dtCSend').onclick = async () => {
+  if(!state.user){ toast('Create an account first — it is free'); return; }
+  const f = $('#dtCBody'); const body = f.value.trim(); if(!body) return;
+  const b = $('#dtCSend'); b.disabled=true;
+  try{
+    await api('/api/comments',{slug:EX.slug, body});
+    f.value=''; loadComments(EX.slug);
+  }catch(e){ toast(e.message); }
+  b.disabled=false;
+};
+$('#dtRemix').onclick = async () => {
+  if(!state.user){ toast('Create an account first — it is free'); return; }
+  const b = $('#dtRemix'); b.disabled=true; b.textContent='Copying…';
+  try{
+    const d = await api('/api/remix',{slug:EX.slug});
+    state.projectId = d.project_id;
+    state.files = d.files; state.preview = d.preview; state.entry = d.entry;
+    state.title = d.title; state.issues = null;
+    openRemix(d);
+    toast('Remixed into your projects');
+  }catch(e){ toast(e.message); }
+  b.disabled=false; b.textContent='Remix this app';
+};
+
+/* A remix lands straight in the build view with the copied code loaded, so the next
+   step — describing a change and letting the model rewrite it — is one click away. */
+function openRemix(d){
+  show('buildView');
+  $('#buildTitle').textContent = d.title;
+  closePop(); resetMeter();
+  $('#dry').classList.add('hide');
+  $('#integ').classList.add('hide');
+  const tp=$('#think'); tp.classList.add('hide'); tp.classList.remove('open');
+  files = new Map();
+  for(const [path,text] of Object.entries(d.files)) files.set(path,{text,done:true});
+  active = d.entry || [...files.keys()][0];
+  renderSteps(6);
+  $('#bar').style.width='100%';
+  rebuildPanes();
+  $('#dlBtn').classList.remove('hide'); $('#openBtn').classList.remove('hide');
+  $('#pubBtn').classList.remove('hide');
+  $('#buildErr').className='notice'; $('#buildErr').classList.remove('hide');
+  $('#buildErr').textContent = 'Remixed from "'+d.from.title+'" by '+d.from.author
+    + '. It is yours now — describe a change below and the model will rewrite the files.';
+  showChangeBox();
+}
+
+const STEPS = ['Reading your brief','Thinking through the architecture','Writing every file','Checking every file','Rendering preview','Packaging the project'];
+function renderSteps(active){
+  const w=$('#log'); w.innerHTML='';
+  STEPS.forEach((s,i)=>{
+    const d=el('div','step'+(i<active?' done':i===active?' active':''));
+    d.append(el('i','s', i<active?'✓':''), el('span',null,s)); w.append(d);
+  });
+  $('#bar').style.width = Math.round((active/STEPS.length)*100)+'%';
+}
+function fmtBytes(n){ return n<1024? n+' B' : (n/1024).toFixed(1)+' KB'; }
+
+let INTEG_CATALOG = null;
+async function integCatalog(){
+  if(INTEG_CATALOG) return INTEG_CATALOG;
+  try{ const r = await fetch(API+'/api/integrations'); INTEG_CATALOG = (await r.json()).integrations; }
+  catch(e){ INTEG_CATALOG = []; }
+  return INTEG_CATALOG;
+}
+
+function renderIntegrations(items){
+  if(!items || !items.length) return;
+  const wrap = $('#integList'); wrap.textContent='';
+  $('#integ').classList.remove('hide');
+  items.forEach(it=>{
+    const c = el('button','ichip'+(it.ready?'':' dev')); c.type='button';
+    c.append(el('i'), el('span',null,it.label),
+             el('span','tag', it.ready ? (it.needs_keys?'keys ready':'built in') : 'dev mode'));
+    c.onclick = () => integDetail(it);
+    wrap.append(c);
+  });
+}
+
+async function integDetail(it){
+  const cat = await integCatalog();
+  const spec = cat.find(x=>x.id===it.id) || {};
+  modal(it.label,(b,close)=>{
+    b.append(el('p','sub','Forge writes '+(spec.module||'a module')+' for this, and calls it from server.py. '+
+      (it.ready
+        ? (it.needs_keys
+            ? 'Your keys are already in the project\u2019s .env, so it runs live the moment you start it.'
+            : 'It needs no account or key at all \u2014 it runs on the app\u2019s own server.')
+        : 'No keys are set, so it ships in dev mode: the feature works end to end locally, and switches to the real service as soon as you fill in .env.')));
+    if((spec.keys||[]).length){
+      b.append(el('div','lbl','Environment variables'));
+      spec.keys.forEach(k=>{
+        const r=el('div','keyrow');
+        r.append(el('code','mono',k.name),
+                 el('span','tag', k.configured?'set by admin':'empty'));
+        b.append(r);
+      });
+    }
+    if((spec.setup||[]).length){
+      b.append(el('div','lbl','To run it live'));
+      const ul=el('ul','steps-list');
+      spec.setup.forEach(x=>ul.append(el('li',null,x)));
+      b.append(ul);
+    }
+    const ok=el('button','btn block','Got it'); ok.onclick=close; b.append(ok);
+  });
+}
+
+async function startBuild(opts){
+  opts = opts || {};
+  err('#clarifyErr','');
+  show('buildView');
+  $('#buildTitle').textContent = state.title || 'Building…';
+  $('#dlBtn').classList.add('hide'); $('#openBtn').classList.add('hide');
+  const out=$('#codeOut'); out.innerHTML='<span class="cursor"></span>';
+  $('#pubBtn').classList.add('hide');
+  const tp=$('#think'); tp.classList.add('hide'); tp.classList.remove('open');
+  $('#thinkStream').textContent=''; $('#thinkPlan').textContent=''; $('#thinkPlan').classList.add('hide');
+  $('#thinkMeta').textContent=''; $('#thinkLabel').textContent='Reasoning and build plan';
+  let thinkChars=0, planBuf='';
+  $('#prevFrame').srcdoc=''; $('#prevNote').classList.add('hide');
+  renderSteps(0); err('#buildErr','');
+  closePop(); resetMeter();
+  { const cb=$('#changeBox'); if(cb) cb.classList.add('hide'); }
+  if(!opts.resume) $('#dry').classList.add('hide');
+  await loadModels();
+  files = new Map();
+  active = null;
+  $('#fileTabs').textContent=''; $('#fileLabel').textContent='project files';
+  $('#integ').classList.add('hide'); $('#integList').textContent='';
+  $('#byteCount').textContent='0 B';
+  const cursor = () => out.querySelector('.cursor');
+
+  try{
+    const res = await fetch(API+'/api/generate',{ method:'POST', headers: headers(),
+      body: JSON.stringify({prompt:state.prompt, answers:state.answers, title:state.title,
+        model: state.model, resume_project: opts.resume || null,
+        attachments: state.attachments.map(a=>({name:a.name,kind:a.kind,text:a.text}))}) });
+    if(!res.ok){ const t=await res.text(); let m=t; try{m=JSON.parse(t).detail}catch(e){}; throw new Error(m); }
+    renderSteps(1);
+    const rd = res.body.getReader(); const dec=new TextDecoder(); let acc='';
+    let lastPaint=0, started=false;
+    while(true){
+      const {value,done} = await rd.read(); if(done) break;
+      acc += dec.decode(value,{stream:true});
+      const parts = acc.split('\n\n'); acc = parts.pop();
+      for(const p of parts){
+        const ev = (p.match(/^event: (.*)$/m)||[])[1];
+        const dm = (p.match(/^data: (.*)$/m)||[])[1];
+        if(!ev||!dm) continue;
+        const data = JSON.parse(dm);
+        if(ev==='status'){
+          if(typeof data.credits==='number') setCredits(data.credits);
+          if(data.reasoning){ tp.classList.remove('hide'); tp.classList.add('open'); }
+          if(data.msg && /error|skipped|fallback/i.test(data.msg)) toast(data.msg);
+        }
+        if(ev==='phase'){
+          renderSteps(data.n===1?1:2);
+          $('#thinkLabel').innerHTML = data.n===1
+            ? '<span class="pulse"></span> '+esc(data.label)
+            : 'Reasoning and build plan';
+          if(data.n===2){ tp.classList.add('open');
+            if(!files.size) out.innerHTML='<span class="muted">waiting for the model to start writing…</span>\n<span class="cursor"></span>'; }
+        }
+        if(ev==='reset'){
+          if(data.target==='plan'){ planBuf=''; $('#thinkPlan').textContent=''; }
+          else {
+            files.clear(); active=null; paintTabs(); started=false;
+            $('#byteCount').textContent='0 B'; $('#fileLabel').textContent='project files';
+            out.innerHTML='<span class="muted">restarting — the last attempt came back empty…</span>\n<span class="cursor"></span>';
+          }
+        }
+        if(ev==='fallback'){
+          const n=$('#buildErr'); n.textContent=data.msg; n.className='notice warn'; n.classList.remove('hide');
+        }
+        if(ev==='think'){
+          tp.classList.remove('hide'); tp.classList.add('open');
+          thinkChars += data.t.length;
+          const st=$('#thinkStream'); st.textContent += data.t;
+          if(st.textContent.length>9000) st.textContent = st.textContent.slice(-9000);
+          st.scrollTop = st.scrollHeight;
+          $('#thinkMeta').textContent = thinkChars.toLocaleString()+' reasoning chars';
+        }
+        if(ev==='plan'){
+          tp.classList.remove('hide'); planBuf += data.t;
+          const pl=$('#thinkPlan'); pl.classList.remove('hide');
+          pl.innerHTML = esc(planBuf).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+        }
+        if(ev==='integrations'){ renderIntegrations(data.items); }
+        if(ev==='file_open'){
+          if(!started){ started=true; renderSteps(2); }
+          if(!files.has(data.path)) files.set(data.path,{text:'',done:false});
+          active = data.path; paintTabs(); paintCode();
+        }
+        if(ev==='chunk'){
+          const path = data.path || active || 'index.html';
+          if(!files.has(path)){ files.set(path,{text:'',done:false}); active=path; paintTabs(); }
+          files.get(path).text += data.t;
+          if(path===active && performance.now()-lastPaint > 45){
+            lastPaint = performance.now(); paintCode();
+          }
+        }
+        if(ev==='file_close'){
+          const f = files.get(data.path); if(f) f.done = true;
+          if(typeof data.credits==='number') setCredits(data.credits);
+          bumpMeter(data.cost, data.credits);
+          paintTabs(); if(data.path===active) paintCode();
+        }
+        if(ev==='exhausted'){
+          for(const f of files.values()) f.done = true;
+          paintTabs(); if(active) paintCode(true);
+          $('#fileLabel').textContent = (active||'project files')+' · '+files.size
+            +' file'+(files.size===1?'':'s')+' so far';
+          showDry(data);
+          return;   /* the build stopped here; the panel drives what happens next */
+        }
+        if(ev==='issues'){ state.projectId = data.project_id; state.issues = data.issues; }
+        if(ev==='done'){
+          state.projectId = data.project_id;
+          state.files = data.files || {};
+          state.preview = data.preview || '';
+          state.entry = data.entry || '';
+          state.issues = data.issues || state.issues;
+          if(typeof data.credits==='number') setCredits(data.credits);
+        }
+      }
+    }
+    // Settle the panes on the finished project.
+    if(state.files && Object.keys(state.files).length){
+      files.clear();
+      for(const [path, text] of Object.entries(state.files)) files.set(path,{text,done:true});
+    } else { for(const f of files.values()) f.done = true; }
+    active = state.entry || [...files.keys()].find(p=>/index\.html$/i.test(p)) || [...files.keys()][0];
+    paintTabs(); paintCode(true);
+    $('#fileLabel').textContent = active + ' · ' + files.size + ' file' + (files.size===1?'':'s');
+    renderSteps(4);
+    $('#prevFrame').srcdoc = state.preview || '';
+    $('#prevNote').classList.remove('hide');
+    await new Promise(r=>setTimeout(r,400));
+    renderSteps(5);
+    $('#bar').style.width='100%';
+    $('#dlBtn').classList.remove('hide'); $('#openBtn').classList.remove('hide');
+    $('#pubBtn').classList.remove('hide');
+    tp.classList.remove('open');   // fold it away so the code and preview get the room
+    $('#thinkLabel').textContent = planBuf.trim() ? 'Reasoning and build plan' : 'Build plan';
+    $('#buildTitle').textContent = state.title || 'Your app';
+    toast('App ready');
+    /* Anything the checker flagged surfaces as a popup with a one-click repair. */
+    if(state.issues && state.issues.length) showIssues(state.issues, state.projectId);
+    state.issues = null;
+    showChangeBox();
+  }catch(e){
+    err('#buildErr', e.message);
+    $('#log').innerHTML=''; $('#bar').style.width='0';
+    if(cursor()) cursor().remove();
+  }
+}
+$('#dlBtn').onclick = async () => {
+  if(!state.projectId) return;
+  const q = '?code='+encodeURIComponent(store.getItem('forge_code')||'');
+  const r = await fetch(API+'/api/download/'+state.projectId+q, {headers: headers()});
+  if(!r.ok) return toast('Download failed');
+  const b = await r.blob(); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=(state.title||'app').replace(/\W+/g,'-').toLowerCase()+'.zip';
+  a.click(); URL.revokeObjectURL(a.href); toast('Downloaded');
+};
+$('#openBtn').onclick = () => {
+  const w = window.open('','_blank');
+  if(!w) return toast('Popup blocked — use Download instead');
+  w.document.write(state.preview||''); w.document.close();
+};
+$('#againBtn').onclick = () => { show('promptView'); };
+
+$('#pubBtn').onclick = () => {
+  if(!state.projectId) return;
+  modal('Publish live',(b,close)=>{
+    b.append(el('p','sub','Publishes this app to its own live web address and lists it in Explore, where other people can run it, like it, comment on it and remix it. The page ships with indexable meta tags and is listed in /sitemap.xml with robots.txt allowing crawlers, so search engines can pick it up.'));
+    /* Already-published apps re-publish free, so the price only appears when it applies. */
+    const paid = state.publishedSlug ? null : el('div','ig-ask');
+    if(paid){
+      paid.append(el('h4',null,'Publishing costs 50 credits'));
+      paid.append(el('p',null,'Charged once for this app. Updating it later is free, and you get 30 credits back automatically every month.'));
+      b.append(paid);
+    }
+    const sw=el('div'); sw.append(el('div','lbl','One-line description (used as the page description)'));
+    const sum=el('input','field'); sum.placeholder='e.g. A habit tracker with streaks and a weekly grid';
+    sw.append(sum); b.append(sw);
+    const msg=el('div','notice err hide');
+    const res=el('div','hide'); const urlRow=el('div','pub-url'); const stats=el('p','muted');
+    stats.style.fontSize='12.5px'; res.append(el('div','lbl','Live address'), urlRow, stats);
+    const go=el('button','btn acc block','Publish');
+    go.onclick=async()=>{
+      msg.className='notice err hide'; go.disabled=true; go.textContent='Publishing…';
+      try{
+        const d=await api('/api/publish',{project_id:state.projectId, summary:sum.value});
+        if(typeof d.credits === 'number') setCredits(d.credits);
+        if(d.charged) toast('50 credits spent');
+        state.publishedSlug = d.slug;
+        if(paid) paid.remove();
+        $('#pubBtn').textContent = 'Update the live app';
+        urlRow.innerHTML='';
+        /* When a deploy token is configured the app is live on real hosting, so that
+           domain is the primary link and the Forge-hosted copy is the backup. */
+        const primary = d.live_url || d.url;
+        const a=document.createElement('a'); a.href=primary; a.target='_blank'; a.rel='noopener';
+        a.textContent=primary; a.style.flex='1';
+        const cp=el('button','btn sm sec','Copy');
+        cp.onclick=()=>{navigator.clipboard?.writeText(primary).then(()=>toast('Link copied')).catch(()=>toast('Copy manually'))};
+        urlRow.append(a,cp);
+        let note;
+        if(d.host==='vercel'){
+          note = (d.updated?'Re-deployed. ':'Live on the public internet. ')
+            + 'Real hosting, own domain, reachable by anyone and indexable by Google.';
+        } else if(d.deploy_error){
+          note = 'Published on Forge, but the live deploy failed: '+d.deploy_error
+            + ' · '+d.views+' views so far';
+        } else {
+          note = (d.updated?'Re-published. ':'Live now. ')+d.views+' views so far'
+            + (d.indexable?' · indexable at your public domain'
+               : ' · add a VERCEL_TOKEN in the admin panel to deploy onto real hosting with its own domain');
+        }
+        stats.textContent = note;
+        /* Publishing always does one thing no hosting setup can undo: it puts the app in
+           the public gallery, where anyone can run it, vote on it and remix it. */
+        if(!$('#pubGallery')){
+          const gl = el('p','sub'); gl.id='pubGallery'; gl.style.cssText='margin-top:8px;font-size:12.5px';
+          gl.append(document.createTextNode('It is now listed in Explore for everyone. '));
+          const link = el('button','btn sm sec','Open it in Explore');
+          link.style.marginTop='6px';
+          link.onclick = () => { $('.mask')?.remove(); openApp(d.slug); };
+          gl.append(el('br'), link);
+          stats.after(gl);
+        }
+        if(d.live_url && d.url!==d.live_url){
+          const alt=el('p','sub','Forge copy: '+d.url); alt.style.fontSize='12px';
+          stats.after(alt);
+        }
+        res.classList.remove('hide');
+        go.textContent='Update live version'; toast(d.updated?'Live version updated':'Published');
+      }catch(e){ msg.textContent=e.message; msg.className='notice err'; go.textContent='Publish'; }
+      go.disabled=false;
+    };
+    b.append(msg,go,res);
+  });
+};
+
+$('#thinkToggle').onclick = () => $('#think').classList.toggle('open');
+
+/* ---------------- modals ---------------- */
+function modal(title, build, big){
+  const mask=el('div','mask'); const m=el('div','modal'+(big?' lg':''));
+  const h=el('div','modal-head'); h.append(el('h3',null,title));
+  const x=el('button','icon-btn','Close'); x.onclick=()=>mask.remove(); h.append(el('div','spacer'),x);
+  const body=el('div','modal-body'); m.append(h,body); mask.append(m);
+  mask.onclick=e=>{ if(e.target===mask) mask.remove(); };
+  $('#modals').append(mask); build(body,()=>mask.remove(),m); return mask;
+}
+
+/* ---------------- integrations ---------------- */
+/* Keys belong to the person, not to the app they happen to be building, so this lives in the
+   nav rather than inside one project. Connect once, every later build picks it up. */
+
+let integCache = null;
+
+function tickNode(){
+  const t = el('span','tick');
+  t.setAttribute('aria-label','connected');
+  t.innerHTML = '<svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 5"/></svg>';
+  return t;
+}
+
+async function openIntegrations(highlight){
+  const want = highlight || [];
+  modal('Integrations', async (b, close, box) => {
+    box.classList.add('lg');
+    b.append(el('p','sub','Connect an account once and every app you build can use it. Keys are stored against your account and written into each project\u2019s .env file \u2014 they are never shown back to you, to other people, or in the published page.'));
+    const list = el('div'); b.append(list);
+    list.append(el('p','ig-note','Loading\u2026'));
+    let d;
+    try{ d = await api('/api/integrations/mine'); }
+    catch(e){ list.innerHTML=''; list.append(el('div','notice err', e.message)); return; }
+    integCache = d.integrations;
+    paintInteg(list, want);
+  }, true);
+}
+
+function paintInteg(list, want){
+  list.innerHTML = '';
+  const rows = integCache || [];
+  const on = rows.filter(r => r.connected).length;
+  const head = el('p','ig-note', on + ' of ' + rows.length + ' connected. Anything not connected still works \u2014 the app falls back to a local version.');
+  list.append(head);
+
+  // Whatever the current build needs goes first, so nobody has to hunt for it.
+  const order = want.length
+    ? [['Needed for this app', rows.filter(r => want.includes(r.id))],
+       ...groupRest(rows.filter(r => !want.includes(r.id)))]
+    : groupRest(rows);
+
+  order.forEach(([cat, items]) => {
+    if(!items.length) return;
+    list.append(el('div','ig-cat', cat));
+    items.forEach(r => list.append(integRow(r, list, want)));
+  });
+}
+
+function groupRest(rows){
+  const cats = [];
+  rows.forEach(r => {
+    let g = cats.find(c => c[0] === r.cat);
+    if(!g){ g = [r.cat, []]; cats.push(g); }
+    g[1].push(r);
+  });
+  return cats;
+}
+
+function integRow(r, list, want){
+  const wrap = el('div');
+  const row = el('div','ig');
+  const t = el('div','ig-t');
+  t.append(el('b', null, r.label));
+  t.append(el('span', null, r.why));
+  row.append(t);
+
+  if(!r.needs_keys){
+    row.append(el('span','ig-note','no account needed'));
+    row.append(tickNode());
+    wrap.append(row);
+    return wrap;
+  }
+  if(r.connected) row.append(tickNode());
+  const btn = el('button','btn sm ' + (r.connected ? 'sec' : 'acc'),
+                 r.connected ? (r.mine ? 'Change' : 'Use my own') : 'Connect');
+  const form = el('div','ig-form hide');
+  btn.onclick = () => {
+    form.classList.toggle('hide');
+    if(!form.classList.contains('hide')) buildIntegForm(form, r, list, want);
+  };
+  row.append(btn);
+  wrap.append(row, form);
+  return wrap;
+}
+
+function buildIntegForm(form, r, list, want){
+  form.innerHTML = '';
+  const inputs = {};
+  r.fields.forEach(f => {
+    const lb = el('label', null, f.name);
+    /* Model names have a working default in the generated code, so saying so stops people
+       hunting for a value they do not need. */
+    if(f.optional) lb.append(el('span', null, '  optional'));
+    form.append(lb);
+    const i = el('input');
+    i.type = 'password';
+    i.autocomplete = 'off';
+    i.spellcheck = false;
+    i.placeholder = f.set_by_me ? 'saved \u2014 type to replace'
+                  : f.set_shared ? 'using the shared key \u2014 type to override'
+                  : f.optional ? 'leave blank for the default'
+                  : 'paste the value';
+    inputs[f.name] = i;
+    form.append(i);
+  });
+  if(r.setup && r.setup.length){
+    const ol = el('ol','ig-steps');
+    r.setup.forEach(step => ol.append(el('li', null, step)));
+    form.append(ol);
+  }
+  if(r.signup){
+    const a = document.createElement('a');
+    a.href = r.signup; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = 'Open the page where you get these \u2192';
+    a.style.cssText = 'display:inline-block;margin-top:9px;font-size:13px;color:var(--acc)';
+    form.append(a);
+  }
+  const msg = el('div','notice err hide');
+  msg.style.marginTop = '10px';
+  const bar = el('div');
+  bar.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap';
+  const save = el('button','btn sm acc','Save');
+  save.onclick = async () => {
+    const values = {};
+    Object.entries(inputs).forEach(([k, i]) => { if(i.value.trim()) values[k] = i.value.trim(); });
+    if(!Object.keys(values).length){
+      msg.className = 'notice err'; msg.textContent = 'Paste at least one value first.';
+      return;
+    }
+    save.disabled = true; save.textContent = 'Saving\u2026';
+    try{
+      const d = await api('/api/integrations/connect', {id: r.id, values});
+      integCache = d.integrations;
+      // Keep whatever the build needs pinned to the top after a save.
+      paintInteg(list, want);
+      syncIntegState(d.integrations);
+      toast(d.integration && d.integration.connected
+        ? r.label + ' connected' : 'Saved \u2014 one more key needed');
+    }catch(e){
+      msg.className = 'notice err'; msg.textContent = e.message;
+      save.disabled = false; save.textContent = 'Save';
+    }
+  };
+  bar.append(save);
+  if(r.mine){
+    const rm = el('button','btn sm sec','Disconnect');
+    rm.onclick = async () => {
+      rm.disabled = true;
+      try{
+        const d = await api('/api/integrations/disconnect', {id: r.id});
+        integCache = d.integrations;
+        paintInteg(list, want);
+        syncIntegState(d.integrations);
+        toast(r.label + ' disconnected');
+      }catch(e){ msg.className='notice err'; msg.textContent = e.message; rm.disabled = false; }
+    };
+    bar.append(rm);
+  }
+  form.append(bar, msg);
+  const first = Object.values(inputs)[0];
+  if(first) first.focus();
+}
+
+/* When something is connected mid-flow, the "connect these first?" prompt in the chat has to
+   agree with it, otherwise it keeps asking for an account that is already set up. */
+function syncIntegState(rows){
+  if(!state.needed || !state.needed.length) return;
+  const by = {};
+  rows.forEach(r => { by[r.id] = r; });
+  state.needed = state.needed.map(r => by[r.id] || r);
+  state.missing = state.needed.filter(r => !r.connected).map(r => r.id);
+  if($('#integAsk')) renderIntegAsk();
+}
+
+$('#integBtn').onclick = () => openIntegrations();
+$('#tkBack').onclick = () => { clearInterval(tkTimer); show('promptView'); };
+
+
+$('#giftBtn').onclick = () => modal('Redeem a gift code',(b,close)=>{
+  b.append(el('p','sub','Gift codes are single-use and add credits instantly.'));
+  const f=el('input','field'); f.placeholder='GIFT-XXXX-XXXX'; f.style.fontFamily='var(--mono)';
+  const msg=el('div','notice err hide');
+  const go=el('button','btn acc block','Redeem');
+  go.onclick=async()=>{
+    msg.className='notice err hide';
+    try{ const d=await api('/api/redeem',{code:f.value.trim()}); setUser(d.user); toast('+'+d.added+' credits'); close(); }
+    catch(e){ msg.textContent=e.message; msg.className='notice err'; }
+  };
+  f.addEventListener('keydown',e=>{if(e.key==='Enter')go.click()});
+  b.append(f,msg,go);
+});
+
+function openAccount(){
+  modal('Your account',(b,close)=>{
+    const code = store.getItem('forge_code')||'—';
+    const box=el('div','codebox'); box.append(el('span','k',code));
+    const cp=el('button','btn sm sec','Copy'); cp.onclick=()=>{navigator.clipboard?.writeText(code);toast('Copied')}; box.append(cp);
+    b.append(el('p','sub','Save this code to sign in on another device.'), box);
+    const stats=el('div','grid2');
+    const s1=el('div','stat'); s1.append(el('b',null,String(state.user?state.user.credits:0)), el('span',null,'credits left')); stats.append(s1);
+    const s2=el('div','stat'); s2.append(el('b','','—'), el('span',null,'apps built')); stats.append(s2);
+    b.append(stats);
+    const wrap=el('div'); wrap.append(el('div','lbl','Recent activity')); const sc=el('div','scroll'); wrap.append(sc); b.append(wrap);
+    const out=el('button','btn sec block','Sign out of this browser');
+    out.onclick=async()=>{ await api('/api/logout',{}); try{store.removeItem('forge_code')}catch(e){}; setUser(null); close(); show('gate');
+      $('#gateChoice').classList.remove('hide'); $('#gateNew').classList.add('hide'); };
+    b.append(out);
+    api('/api/history').then(d=>{
+      s2.querySelector('b').textContent = String(d.projects.length);
+      const t=document.createElement('table');
+      t.innerHTML='<thead><tr><th>Change</th><th>Reason</th><th>When</th></tr></thead>';
+      const tb=document.createElement('tbody');
+      d.ledger.forEach(r=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML='<td style="color:'+(r.delta>0?'var(--ok)':'var(--ink-2)')+'">'+(r.delta>0?'+':'')+r.delta+'</td><td>'+esc(r.reason)+'</td><td class="muted">'+new Date(r.at*1000).toLocaleString()+'</td>';
+        tb.append(tr);
+      });
+      t.append(tb); sc.append(t);
+    }).catch(()=>{});
+  });
+}
+$('#acctBtn').onclick = openAccount;
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+/* ---------------- admin ---------------- */
+let adminPw = '';
+$('#adminBtn').onclick = () => adminPw ? adminPanel() : adminLogin();
+function adminLogin(){
+  modal('Admin access',(b,close)=>{
+    const f=el('input','field'); f.type='password'; f.placeholder='Admin password';
+    const msg=el('div','notice err hide');
+    const go=el('button','btn block','Unlock');
+    go.onclick=async()=>{
+      try{ await api('/api/admin/stats',{password:f.value}); adminPw=f.value; close(); adminPanel(); }
+      catch(e){ msg.textContent=e.message; msg.className='notice err'; }
+    };
+    f.addEventListener('keydown',e=>{if(e.key==='Enter')go.click()});
+    b.append(f,msg,go); setTimeout(()=>f.focus(),50);
+  });
+}
+function adminPanel(){
+  modal('Admin panel',(b,close,m)=>{
+    const tabs=el('div','tabs'); const panes={};
+    ['Overview','Gift cards','Users','Integrations'].forEach((name,i)=>{
+      const t=el('button','tab'+(i===0?' on':''),name);
+      t.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('on')); t.classList.add('on');
+        Object.entries(panes).forEach(([k,v])=>v.classList.toggle('hide',k!==name)); };
+      tabs.append(t); panes[name]=el('div','grid'+(i===0?'':' hide')); if(i!==0) panes[name].classList.add('hide');
+      panes[name].style.display='grid'; panes[name].style.gap='14px';
+    });
+    m.insertBefore(tabs, b);
+    b.append(panes.Overview, panes['Gift cards'], panes.Users, panes.Integrations);
+
+    // integration key vault — whatever is saved here lands in every generated .env
+    const ip = panes.Integrations;
+    ip.append(el('p','sub','Paste a key once and every app Forge generates from now on gets it written straight into its .env, so the integration is live on first run. Leave one empty and that integration still works — it ships in dev mode instead. Keys are stored on the server and are never sent back to a browser.'));
+    const ipList = el('div'); ipList.style.display='grid'; ipList.style.gap='16px';
+    ip.append(ipList);
+
+    /* Hosting token — not an integration for generated apps, but the thing that turns
+       Publish into a real deploy on a public domain instead of a page served by Forge. */
+    const host = el('div'); host.style.border='1px solid var(--line)';
+    host.style.borderRadius='var(--r-sm)'; host.style.padding='14px'; host.style.marginBottom='16px';
+    const hh = el('div','integ-head'); hh.style.marginBottom='10px';
+    hh.append(el('b',null,'Real publishing (Vercel)'), el('span','muted','turns Publish into a live deploy'));
+    host.append(hh, el('p','sub','With a Vercel token saved, every Publish uploads the app to Vercel and returns a public URL on its own domain \u2014 reachable by anyone and indexable by Google. Without it, published apps are served from this Forge server instead. Create a token at vercel.com \u2192 Settings \u2192 Tokens.'));
+    [['VERCEL_TOKEN','Vercel token'],['VERCEL_TEAM_ID','Team ID (only for team accounts)']].forEach(([key,label])=>{
+      const r = el('div','keyrow'); r.style.marginBottom='8px';
+      const f = el('input','field'); f.type='password'; f.placeholder=label;
+      f.setAttribute('aria-label', key);
+      const bt = el('button','btn sm','Save');
+      bt.onclick = async () => {
+        try{
+          await api('/api/admin/secrets',{password:adminPw,name:key,value:f.value});
+          toast(f.value.trim()? key+' saved' : key+' cleared'); f.value='';
+        }catch(e){ toast(e.message); }
+      };
+      r.append(f, bt);
+      host.append(el('div','lbl',key), r);
+    });
+    ip.insertBefore(host, ipList);
+
+    async function loadInteg(){
+      INTEG_CATALOG = null;
+      const cat = await integCatalog();
+      ipList.textContent='';
+      cat.forEach(sp=>{
+        const card = el('div'); card.style.border='1px solid var(--line)';
+        card.style.borderRadius='var(--r-sm)'; card.style.padding='14px';
+        const head = el('div','integ-head');
+        head.style.marginBottom='10px';
+        head.append(el('b',null,sp.label), el('span','muted', sp.needs_keys ? '' : 'no key needed'));
+        card.append(head);
+        if(!sp.keys.length){
+          card.append(el('p','sub','Runs on the app\u2019s own server. Nothing to configure.'));
+        }
+        sp.keys.forEach(k=>{
+          const r = el('div','keyrow'); r.style.marginBottom='8px';
+          const f = el('input','field'); f.type='password';
+          f.placeholder = k.configured ? 'saved — type to replace' : k.name;
+          f.setAttribute('aria-label', k.name);
+          const bt = el('button','btn sm'+(k.configured?' sec':''), k.configured?'Replace':'Save');
+          bt.onclick = async () => {
+            try{
+              await api('/api/admin/secrets',{password:adminPw,name:k.name,value:f.value});
+              toast(f.value.trim()? k.name+' saved' : k.name+' cleared'); f.value=''; loadInteg();
+            }catch(e){ toast(e.message); }
+          };
+          r.append(f, bt);
+          const lab = el('div','lbl', k.name + (k.configured ? ' · set' : ' · empty'));
+          card.append(lab, r);
+          if(k.configured){
+            const clr = el('button','btn sm sec','Clear this key');
+            clr.onclick = async () => {
+              try{ await api('/api/admin/secrets',{password:adminPw,name:k.name,value:''});
+                toast(k.name+' cleared'); loadInteg(); }catch(e){ toast(e.message); }
+            };
+            card.append(clr);
+          }
+        });
+        if((sp.setup||[]).length){
+          const ul=el('ul','steps-list'); sp.setup.forEach(x=>ul.append(el('li',null,x)));
+          card.append(el('div','lbl','Where to get it'), ul);
+        }
+        ipList.append(card);
+      });
+    }
+    loadInteg();
+
+    // gift generator
+    const g=panes['Gift cards'];
+    g.append(el('p','sub','Each code works once, for one user. Add a batch label to stop one person redeeming several codes from the same batch.'));
+    const row=el('div','grid2');
+    const cr=el('input','field'); cr.type='number'; cr.value=20; cr.min=1;
+    const ct=el('input','field'); ct.type='number'; ct.value=5; ct.min=1; ct.max=100;
+    const w1=el('div'); w1.append(el('div','lbl','Credits per code'),cr);
+    const w2=el('div'); w2.append(el('div','lbl','How many codes'),ct);
+    row.append(w1,w2);
+    const note=el('input','field'); note.placeholder='Batch label (optional) e.g. launch-week';
+    const mk=el('button','btn acc block','Generate gift cards');
+    const outBox=el('div','scroll hide'); outBox.style.padding='12px'; outBox.style.fontFamily='var(--mono)'; outBox.style.fontSize='12.5px'; outBox.style.whiteSpace='pre-line'; outBox.style.lineHeight='1.9';
+    const cpAll=el('button','btn sm sec hide','Copy all codes');
+    mk.onclick=async()=>{
+      try{
+        const d=await api('/api/admin/gifts',{password:adminPw,credits:+cr.value,count:+ct.value,note:note.value});
+        outBox.textContent=d.codes.join('\n'); outBox.classList.remove('hide'); cpAll.classList.remove('hide');
+        cpAll.onclick=()=>{navigator.clipboard?.writeText(d.codes.join('\n'));toast('Codes copied')};
+        toast(d.codes.length+' codes created'); load();
+      }catch(e){ toast(e.message); }
+    };
+    g.append(row, el('div','lbl','Batch label'), note, mk, outBox, cpAll);
+    const giftTable=el('div','scroll'); g.append(el('div','lbl','Issued codes'), giftTable);
+
+    // grant
+    const u=panes.Users;
+    const gc=el('input','field'); gc.placeholder='FRG-XXXX-XXXX-XXXX';
+    const ga=el('input','field'); ga.type='number'; ga.value=10;
+    const gb=el('button','btn block','Adjust credits');
+    gb.onclick=async()=>{ try{ await api('/api/admin/grant',{password:adminPw,code:gc.value,credits:+ga.value}); toast('Updated'); load(); }catch(e){ toast(e.message); } };
+    const rowu=el('div','grid2'); const uw1=el('div'); uw1.append(el('div','lbl','User code'),gc);
+    const uw2=el('div'); uw2.append(el('div','lbl','Credits (+/-)'),ga); rowu.append(uw1,uw2);
+    u.append(rowu,gb); const userTable=el('div','scroll'); u.append(el('div','lbl','Users'),userTable);
+
+    const ov=panes.Overview; const statWrap=el('div','grid2'); ov.append(statWrap);
+    const engineNote=el('div','notice warn hide'); ov.append(engineNote);
+
+    async function load(){
+      const d = await api('/api/admin/stats',{password:adminPw});
+      statWrap.innerHTML='';
+      [['users','Users'],['credits_held','Credits held'],['credits_spent','Credits spent'],['projects','Apps built']]
+        .forEach(([k,l])=>{ const s=el('div','stat'); s.append(el('b',null,String(d.totals[k])), el('span',null,l)); statWrap.append(s); });
+      if(!d.engine.ok){ engineNote.classList.remove('hide');
+        engineNote.textContent='Local model not reachable at '+d.engine.url+' — generations use the built-in fallback generator.'; }
+      else { engineNote.classList.add('hide'); }
+      giftTable.innerHTML=''; const gt=document.createElement('table');
+      gt.innerHTML='<thead><tr><th>Code</th><th>Credits</th><th>Batch</th><th>Status</th></tr></thead>';
+      const gtb=document.createElement('tbody');
+      d.gifts.forEach(x=>{ const tr=document.createElement('tr');
+        tr.innerHTML='<td class="mono">'+esc(x.code)+'</td><td>'+x.credits+'</td><td class="muted">'+esc(x.note||'—')+'</td><td>'+(x.redeemed_at?('<span style="color:var(--mut)">used by '+esc(x.by_code||'?')+'</span>'):'<span style="color:var(--ok)">unused</span>')+'</td>';
+        gtb.append(tr); });
+      gt.append(gtb); giftTable.append(gt);
+      userTable.innerHTML=''; const ut=document.createElement('table');
+      ut.innerHTML='<thead><tr><th>Code</th><th>Credits</th><th>Joined</th></tr></thead>';
+      const utb=document.createElement('tbody');
+      d.users.forEach(x=>{ const tr=document.createElement('tr');
+        tr.innerHTML='<td class="mono">'+esc(x.code)+'</td><td>'+x.credits+'</td><td class="muted">'+new Date(x.created_at*1000).toLocaleDateString()+'</td>';
+        gcFill(tr,x.code); utb.append(tr); });
+      ut.append(utb); userTable.append(ut);
+      function gcFill(tr,code){ tr.style.cursor='pointer'; tr.onclick=()=>{ gc.value=code; toast('Loaded '+code); }; }
+    }
+    load().catch(e=>toast(e.message));
+  }, true);
+}
+</script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
